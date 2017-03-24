@@ -47,9 +47,9 @@ class CNNPolicy(Policy):
                 weights_initializer=tf.contrib.layers.xavier_initializer())
 
         # op to sample an action - multinomial takes unnormalized log probs
-        # self.logits = tf.Print(self.logits, [self.logits], "self.Logits - ")
         self.sample = tf.reshape(tf.multinomial(self.logits, 1), []) #TODO: change to categorical?
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
+        self.feature = tf.no_op()
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
                                                    trainable=False)
 
@@ -66,7 +66,7 @@ class CNNPolicy(Policy):
         return self.sess.run(self.grads, feed_dict=feed_dict)
 
     def act(self, ob, c, h):
-        return self.sess.run([self.sample, self.vf, None],
+        return self.sess.run([self.sample, self.vf] + self.feature,
                         {self.x: [ob]})
 
     def value(self, ob, c, h):

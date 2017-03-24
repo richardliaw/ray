@@ -24,7 +24,7 @@ class Runner(object):
         env = create_env(env_name)
         self.id = actor_id
         num_actions = env.action_space.n
-        self.policy = CNNPolicy(env.observation_space.shape, num_actions, actor_id)
+        self.policy = CNNPolicy(env.observation_space.shape, num_actions)
         self.runner = RunnerThread(env, self.policy, 20)
         self.env = env
         self.logdir = logdir
