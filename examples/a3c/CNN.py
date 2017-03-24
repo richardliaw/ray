@@ -1,4 +1,4 @@
-rom __future__ import absolute_import
+from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
@@ -37,7 +37,7 @@ class CNNPolicy(Policy):
 
         self.logits = tf.contrib.layers.fully_connected(
                 inputs=fc1,
-                num_outputs=hparams['num_actions'],
+                num_outputs=ac_space,
                 activation_fn=None)
 
         self.vf = tf.contrib.layers.fully_connected(
