@@ -73,4 +73,4 @@ class CNNPolicy(Policy):
         return self.sess.run(self.vf, {self.x: [ob]})[0]
 
     def get_initial_features(self):
-        return None
+        return [None]
