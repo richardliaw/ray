@@ -12,7 +12,7 @@ use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.
 class Policy(object):
     """Policy base class"""
 
-    def __init__(self, ob_space, ac_space, task, name="local"):
+    def __init__(self, ob_space, ac_space, name="local"):
         self.local_steps = 0
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()

@@ -32,7 +32,7 @@ given a rollout, compute its returns and the advantage
     # https://arxiv.org/abs/1506.02438
     batch_adv = discount(delta_t, gamma * lambda_)
 
-    features = rollout.features[0]
+    features = rollout.features[0] if len(rollout.features) > 0 else None
     return Batch(batch_si, batch_a, batch_adv, batch_r, rollout.terminal, features)
 
 Batch = namedtuple("Batch", ["si", "a", "adv", "r", "terminal", "features"])

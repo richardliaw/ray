@@ -66,11 +66,11 @@ class CNNPolicy(Policy):
         return self.sess.run(self.grads, feed_dict=feed_dict)
 
     def act(self, ob, c, h):
-        return self.sess.run([self.sample, self.vf],
+        return self.sess.run([self.sample, self.vf, None],
                         {self.x: [ob]})
 
     def value(self, ob, c, h):
         return self.sess.run(self.vf, {self.x: [ob]})[0]
 
     def get_initial_features(self):
-        return self.state_init
+        return None
