@@ -120,6 +120,7 @@ class Training():
         return self.policy.get_weights()
 
     def set_weights(self, weights):
+        print("Setting weights...")
         self.policy.set_weights(weights)
 
     def get_weights(self):
@@ -183,17 +184,24 @@ class Training():
     def get_gradient(self):
         pass
 
+def model_averaging(params):
+    loader = defaultdict(list)
+    for param_dict in params:
+        for k, v in param_dict.items():
+            loader[k].append(v)
+    return {k: np.mean(v, axis=0) for k ,v in loader.items()}
+        
 
 def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
     experiments = [Training(num_workers) for i in range(exp_count)]
     all_info = []
-    new_params = experiments[0].get_weights()
+    new_params = ray.get(experiments[0].get_weights())
     [e.set_weights(new_params) for i, e in enumerate(experiments)]
     while True:
+        p_id = ray.put(new_params)
         [e.set_weights(new_params) for i, e in enumerate(experiments)]
-        params = ray.get([e.train(5 * 1e3) for i, e in enumerate(experiments)])
-        import ipdb; ipdb.set_trace()
-        new_params = np.mean(params)
+        params = ray.get([e.train(1 * 1e2) for i, e in enumerate(experiments)])
+        new_params = model_averaging(params)
 
         
     info_list = ray.get(info_list)
@@ -203,7 +211,7 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
     parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
-    parser.add_argument("--runners", default=10, type=int, help="Number of simulations")
+    parser.add_argument("--runners", default=5, type=int, help="Number of simulations")
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
     opts = parser.parse_args(sys.argv[1:])
