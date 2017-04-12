@@ -77,7 +77,53 @@ class Training():
     
     def get_driver_node(self):
         return self.driver_node
-    
+
+    def train(self, steps_max):
+        env = create_env(self.env_name)
+        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+        parameters = self.policy.get_weights()
+        gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
+        steps = 0
+        obs = 0
+
+        ## DEBUG
+        # timing = defaultdict(list)
+        # from csv import DictWriter
+        # log = None
+
+        while steps < steps_max:
+            # _start = timestamp()
+            done_id, gradient_list = ray.wait(gradient_list)
+            gradient, info = ray.get(done_id)[0]
+            # _getwait = timestamp()
+            self.policy.model_update(gradient)
+            # _update = timestamp()
+            parameters = self.policy.get_weights()
+            # _endget = timestamp()
+            steps += 1
+            obs += info["size"]
+            gradient_list.extend([agents[info["id"]].compute_gradient(parameters, timestamp())])
+            # _endsubmit = timestamp()
+            # timing["Task"].append(info["time"])
+            # timing["Task_start"].append(info["start_task"])
+            # timing["Task_end"].append(_getwait - info["end"])
+            # timing["1.Wait"].append(_getwait - _start)
+            # timing["2.Update"].append(_update - _getwait)
+            # timing["3.Weights"].append(_endget - _update)
+            # timing["4.Submit"].append(_endsubmit - _endget)
+            # timing["5.Total"].append(_endsubmit - _start)
+            # if steps % 200 == 0:
+            #     if log is None:
+            #         log = DictWriter(open("./timing.csv", "w"), timing.keys())
+            #         log.writeheader()
+            #     print("####"*10 + " ".join(["%s: %f" % (k, np.mean(v)) for k, v in sorted(timing.items())]))
+            #     log.writerow(timing)
+                
+            #     timing = defaultdict(list)
+        return steps
+
+
+
     def async_train(self, steps_max, addr_info):
         env = create_env(self.env_name)
         self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
@@ -142,30 +188,30 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
     headers = ["id", "size", "node", "start", "end"]
     for i, e in enumerate(experiments):
         print("Starting new exp..")
-        stats = defaultdict(lambda: defaultdict(int))
+        # stats = defaultdict(lambda: defaultdict(int))
         info_list = e.train(5 * 1e7, addr_info)
         info_list = ray.get(info_list)
-        log_dir = ray.get(e.get_log_dir())
-        with open(log_dir + "timing_" + infostr + "_%d.csv" % i, "w") as f:
-            writer = DictWriter(f, headers)
-            writer.writeheader()
-            writer.writerows(info_list)
-        for info in info_list:
-            idx = info['id']
-            stats[idx]['node'] = info['node']
-            if stats[idx]['start'] == 0:
-                stats[idx]['start'] = info['start']
-            stats[idx]['end'] = info['end']
-            stats[idx]['cpu_time'] += (info['end'] - info['start'])
-            stats[idx]['obs'] += info['size']
-            stats[idx]['count'] += 1
-        stats["driver_node"] = ray.get(e.get_driver_node())
-        stats = json.loads(json.dumps(stats))
-        all_info.append(stats)
-    import pickle
-    fname = os.path.join(log_dir, "stats_{0}.pkl".format(infostr))
-    with open(fname, "wb") as f:
-        pickle.dump(all_info, f)
+    #     log_dir = ray.get(e.get_log_dir())
+    #     with open(log_dir + "timing_" + infostr + "_%d.csv" % i, "w") as f:
+    #         writer = DictWriter(f, headers)
+    #         writer.writeheader()
+    #         writer.writerows(info_list)
+    #     for info in info_list:
+    #         idx = info['id']
+    #         stats[idx]['node'] = info['node']
+    #         if stats[idx]['start'] == 0:
+    #             stats[idx]['start'] = info['start']
+    #         stats[idx]['end'] = info['end']
+    #         stats[idx]['cpu_time'] += (info['end'] - info['start'])
+    #         stats[idx]['obs'] += info['size']
+    #         stats[idx]['count'] += 1
+    #     stats["driver_node"] = ray.get(e.get_driver_node())
+    #     stats = json.loads(json.dumps(stats))
+    #     all_info.append(stats)
+    # import pickle
+    # fname = os.path.join(log_dir, "stats_{0}.pkl".format(infostr))
+    # with open(fname, "wb") as f:
+    #     pickle.dump(all_info, f)
     print("Done")
 
 if __name__ == '__main__':
