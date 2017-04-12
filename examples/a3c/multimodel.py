@@ -82,7 +82,7 @@ class Training():
         env = create_env(self.env_name)
         self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
         parameters = self.policy.get_weights()
-        gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
+        gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         steps = 0
         obs = 0
 
@@ -102,7 +102,7 @@ class Training():
             # _endget = timestamp()
             steps += 1
             obs += info["size"]
-            gradient_list.extend([agents[info["id"]].compute_gradient(parameters, timestamp())])
+            gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters)])
             # _endsubmit = timestamp()
             # timing["Task"].append(info["time"])
             # timing["Task_start"].append(info["start_task"])
@@ -189,8 +189,8 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
     for i, e in enumerate(experiments):
         print("Starting new exp..")
         # stats = defaultdict(lambda: defaultdict(int))
-        info_list = e.train(5 * 1e7, addr_info)
-        info_list = ray.get(info_list)
+        info_list = e.train(5 * 1e7)
+    info_list = ray.get(info_list)
     #     log_dir = ray.get(e.get_log_dir())
     #     with open(log_dir + "timing_" + infostr + "_%d.csv" % i, "w") as f:
     #         writer = DictWriter(f, headers)
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     if opts.addr:
         address_info = ray.init(redis_address=opts.addr, num_cpus=5, num_workers=5)
     else:
-        address_info = ray.init(num_cpus=5, num_workers=5)
+        address_info = ray.init()
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
     address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
