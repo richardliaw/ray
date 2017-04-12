@@ -72,6 +72,10 @@ class Training():
         ## end inline ddef
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
 
+        env = create_env(self.env_name)
+        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+  
+
     def get_log_dir(self):
         return self.log_dir
     
@@ -79,17 +83,10 @@ class Training():
         return self.driver_node
 
     def train(self, steps_max):
-        env = create_env(self.env_name)
-        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
         parameters = self.policy.get_weights()
         gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         steps = 0
         obs = 0
-
-        ## DEBUG
-        # timing = defaultdict(list)
-        # from csv import DictWriter
-        # log = None
 
         while steps < steps_max:
             # _start = timestamp()
@@ -120,8 +117,13 @@ class Training():
             #     log.writerow(timing)
                 
             #     timing = defaultdict(list)
-        return steps
+        return self.policy.get_weights()
 
+    def set_weights(self, weights):
+        self.policy.set_weights(weights)
+
+    def get_weights(self):
+        return self.policy.get_weights()
 
 
     def async_train(self, steps_max, addr_info):
@@ -185,33 +187,17 @@ class Training():
 def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
     experiments = [Training(num_workers) for i in range(exp_count)]
     all_info = []
-    headers = ["id", "size", "node", "start", "end"]
-    for i, e in enumerate(experiments):
-        print("Starting new exp..")
-        # stats = defaultdict(lambda: defaultdict(int))
-        info_list = e.train(5 * 1e7)
+    new_params = experiments[0].get_weights()
+    [e.set_weights(new_params) for i, e in enumerate(experiments)]
+    while True:
+        [e.set_weights(new_params) for i, e in enumerate(experiments)]
+        params = ray.get([e.train(5 * 1e3) for i, e in enumerate(experiments)])
+        import ipdb; ipdb.set_trace()
+        new_params = np.mean(params)
+
+        
     info_list = ray.get(info_list)
-    #     log_dir = ray.get(e.get_log_dir())
-    #     with open(log_dir + "timing_" + infostr + "_%d.csv" % i, "w") as f:
-    #         writer = DictWriter(f, headers)
-    #         writer.writeheader()
-    #         writer.writerows(info_list)
-    #     for info in info_list:
-    #         idx = info['id']
-    #         stats[idx]['node'] = info['node']
-    #         if stats[idx]['start'] == 0:
-    #             stats[idx]['start'] = info['start']
-    #         stats[idx]['end'] = info['end']
-    #         stats[idx]['cpu_time'] += (info['end'] - info['start'])
-    #         stats[idx]['obs'] += info['size']
-    #         stats[idx]['count'] += 1
-    #     stats["driver_node"] = ray.get(e.get_driver_node())
-    #     stats = json.loads(json.dumps(stats))
-    #     all_info.append(stats)
-    # import pickle
-    # fname = os.path.join(log_dir, "stats_{0}.pkl".format(infostr))
-    # with open(fname, "wb") as f:
-    #     pickle.dump(all_info, f)
+
     print("Done")
 
 if __name__ == '__main__':
