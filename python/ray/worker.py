@@ -1345,7 +1345,7 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
   assert not worker.connected, error_message
   assert worker.cached_functions_to_run is not None, error_message
   assert worker.cached_remote_functions is not None, error_message
-  assert env._cached_environment_variables is not None, error_message
+  # assert env._cached_environment_variables is not None, error_message
   # Initialize some fields.
   worker.worker_id = random_string()
   worker.actor_id = actor_id
@@ -1504,8 +1504,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     for function in worker.cached_functions_to_run:
       worker.run_function_on_all_workers(function)
     # Export cached environment variables to the workers.
-    for name, environment_variable in env._cached_environment_variables:
-      env.__setattr__(name, environment_variable)
+    # for name, environment_variable in env._cached_environment_variables:
+    #   env.__setattr__(name, environment_variable)
     # Export cached remote functions to the workers.
     for info in worker.cached_remote_functions:
       (function_id, func_name, func,
@@ -1650,7 +1650,7 @@ def get(object_ids, worker=global_worker):
   """
   check_connected(worker)
   with log_span("ray:get", worker=worker):
-    check_main_thread()
+    # check_main_thread()
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.get is the identity operation (the input will
@@ -1682,7 +1682,7 @@ def put(value, worker=global_worker):
   """
   check_connected(worker)
   with log_span("ray:put", worker=worker):
-    check_main_thread()
+    # check_main_thread()
 
     if worker.mode == PYTHON_MODE:
       # In PYTHON_MODE, ray.put is the identity operation.
