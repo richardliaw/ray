@@ -78,7 +78,7 @@ class Training():
     def get_driver_node(self):
         return self.driver_node
     
-    def train(self, steps_max, addr_info):
+    def async_train(self, steps_max, addr_info):
         env = create_env(self.env_name)
         self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
         parameters = self.policy.get_weights()
