@@ -425,13 +425,13 @@ void update_dynamic_resources(LocalSchedulerState *state,
     /* Add or subtract the task's resources from our count. */
     state->dynamic_resources[i] += resource;
 
-    if ((!return_resources && state->dynamic_resources[i] < 0) &&
+    /* if ((!return_resources && state->dynamic_resources[i] < 0) &&
         !oversubscribed) {
-      /* Log a warning if we are using more resources than we have been
-       * allocated, and we weren't already oversubscribed. */
+      * Log a warning if we are using more resources than we have been
+       * allocated, and we weren't already oversubscribed. 
       LOG_WARN("local_scheduler dynamic resources dropped to %8.4f\t%8.4f\n",
                state->dynamic_resources[0], state->dynamic_resources[1]);
-    }
+    }*/
     CHECK(state->dynamic_resources[i] <= state->static_resources[i]);
   }
   print_resource_info(state, spec);
