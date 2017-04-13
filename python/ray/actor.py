@@ -105,7 +105,7 @@ def fetch_and_register_actor(key, worker):
       # the actor.
 
 
-def select_local_scheduler(local_schedulers, num_gpus, worker):
+def select_local_scheduler(local_schedulers, num_gpus, worker, local):
   """Select a local scheduler to assign this actor to.
 
   Args:
@@ -124,8 +124,16 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
   # TODO(rkn): We should change this method to have a list of GPU IDs that we
   # pop from and push to. The current implementation is not compatible with
   # actors releasing GPU resources.
+  if local:
+    cur_sched = [sched for sched in local_schedulers
+                  if sched[b'node_ip_address'].decode('utf-8') == ray.services.get_node_ip_address()]
+    assert len(cur_sched) == 1
+    return cur_sched[0][b"ray_client_id"],[]
   if num_gpus == 0:
-    local_scheduler_id = random.choice(local_schedulers)[b"ray_client_id"]
+    num_cpus = np.array([float(sched[b'num_cpus'].decode('utf-8'))
+                        for sched in local_schedulers])
+    p_vals = num_cpus / np.sum(num_cpus)
+    local_scheduler_id = np.random.choice(local_schedulers, p=p_vals)[b"ray_client_id"]
     gpu_ids = []
   else:
     # All of this logic is for finding a local scheduler that has enough
@@ -160,7 +168,7 @@ def select_local_scheduler(local_schedulers, num_gpus, worker):
 
 
 def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
-                 worker):
+                 worker, local):
   """Export an actor to redis.
 
   Args:
@@ -186,7 +194,7 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
   # Select a local scheduler for the actor.
   local_schedulers = state.get_local_schedulers(worker)
   local_scheduler_id, gpu_ids = select_local_scheduler(local_schedulers,
-                                                       num_gpus, worker)
+                                                       num_gpus, worker, local)
 
   worker.redis_client.publish("actor_notifications",
                               actor_id.id() + local_scheduler_id)
@@ -203,7 +211,7 @@ def export_actor(actor_id, Class, actor_method_names, num_cpus, num_gpus,
 
 
 def actor(*args, **kwargs):
-  def make_actor_decorator(num_cpus=1, num_gpus=0):
+  def make_actor_decorator(num_cpus=1, num_gpus=0, local=False):
     def make_actor(Class):
       # The function actor_method_call gets called if somebody tries to call a
       # method on their local actor stub object.
@@ -245,7 +253,7 @@ def actor(*args, **kwargs):
 
           export_actor(self._ray_actor_id, Class,
                        self._ray_actor_methods.keys(), num_cpus, num_gpus,
-                       ray.worker.global_worker)
+                       ray.worker.global_worker, local)
           # Call __init__ as a remote function.
           if "__init__" in self._ray_actor_methods.keys():
             actor_method_call(self._ray_actor_id, "__init__",
