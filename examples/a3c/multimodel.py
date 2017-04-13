@@ -28,7 +28,7 @@ class Training():
         self.driver_node = ray.services.get_node_ip_address()
 
         #inline defn needed
-        @ray.actor
+        @ray.actor(local=True)
         class Runner(object):
             """Actor object to start running simulation on workers.
                 Gradient computation is also executed from this object."""

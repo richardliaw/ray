@@ -125,7 +125,10 @@ def select_local_scheduler(local_schedulers, num_gpus, worker, local):
   # pop from and push to. The current implementation is not compatible with
   # actors releasing GPU resources.
   if local:
-    cur_sched = [sched for sched in local_schedulers
+    if len(local_schedulers) == 1:
+      cur_sched = local_schedulers
+    else:
+      cur_sched = [sched for sched in local_schedulers
                   if sched[b'node_ip_address'].decode('utf-8') == ray.services.get_node_ip_address()]
     assert len(cur_sched) == 1
     return cur_sched[0][b"ray_client_id"],[]
@@ -293,15 +296,16 @@ def actor(*args, **kwargs):
 
   # In this case, the actor decorator is something like @ray.actor(num_gpus=1).
   if len(args) == 0 and len(kwargs) > 0 and all([key
-                                                 in ["num_cpus", "num_gpus"]
+                                                 in ["num_cpus", "num_gpus", "local"]
                                                  for key in kwargs.keys()]):
     num_cpus = kwargs["num_cpus"] if "num_cpus" in kwargs.keys() else 1
     num_gpus = kwargs["num_gpus"] if "num_gpus" in kwargs.keys() else 0
-    return make_actor_decorator(num_cpus=num_cpus, num_gpus=num_gpus)
-
+    local =  "local" in kwargs.keys()
+    return make_actor_decorator(num_cpus=num_cpus, num_gpus=num_gpus, local=local)
+  print(kwargs.keys())
   raise Exception("The ray.actor decorator must either be applied with no "
                   "arguments as in '@ray.actor', or it must be applied using "
-                  "some of the arguments 'num_cpus' or 'num_gpus' as in "
+                  "some of the arguments 'local', 'num_cpus' or 'num_gpus' as in "
                   "'ray.actor(num_gpus=1)'.")
 
 
