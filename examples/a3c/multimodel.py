@@ -2,6 +2,8 @@ import argparse
 import numpy as np
 import json
 from collections import defaultdict
+import time
+from datetime import timedelta
 import ray
 import tensorflow as tf
 from driver import Runner
@@ -88,12 +90,14 @@ class Training():
         gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         steps = 0
         obs = 0
+        results = []
 
         while steps < steps_max:
             # _start = timestamp()
             done_id, gradient_list = ray.wait(gradient_list)
             gradient, info = ray.get(done_id)[0]
-            print(info['results'])
+            if info['results']:
+                results.extend(info['results'])
             # _getwait = timestamp()
             self.policy.model_update(gradient)
             # _update = timestamp()
@@ -119,7 +123,7 @@ class Training():
             #     log.writerow(timing)
                 
             #     timing = defaultdict(list)
-        return self.policy.get_weights()
+        return self.policy.get_weights(), results
 
     def set_weights(self, weights):
         print("Setting weights...")
@@ -192,20 +196,33 @@ def model_averaging(params):
         for k, v in param_dict.items():
             loader[k].append(v)
     return {k: np.mean(v, axis=0) for k ,v in loader.items()}
+
+def best_model(params, stats):
+    mean = [m - s for m, s in stats]
+    best = np.argmax(mean)
+    print("Choosing %d..." % best)
+    return params[best]
+
         
 
 def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
+    _start = time.time()
     experiments = [Training(num_workers) for i in range(exp_count)]
     all_info = []
     new_params = ray.get(experiments[0].get_weights())
-    [e.set_weights(new_params) for i, e in enumerate(experiments)]
+    import ipdb; ipdb.set_trace()
     while True:
-        [e.set_weights(new_params) for i, e in enumerate(experiments)]
+        ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         print("Set weights")
-        params = ray.get([e.train(1 * 1e3) for i, e in enumerate(experiments)])
-        new_params = model_averaging(params)
+        return_vals = ray.get([e.train(3 * 1e2) for i, e in enumerate(experiments)])
+        params, results = zip(*return_vals)
+        stats = [(np.mean(x), np.std(x)) for x in results]
+        print("Time elapsed: " + str(timedelta(seconds=time.time() - _start)))
 
-        
+        print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
+        new_params = model_averaging(params)
+        # new_params = best_model(params, stats)
+
     info_list = ray.get(info_list)
 
     print("Done")
@@ -218,7 +235,7 @@ if __name__ == '__main__':
     parser.add_argument("--info", default="", type=str, help="Information for file name")
     opts = parser.parse_args(sys.argv[1:])
     if opts.addr:
-        address_info = ray.init(redis_address=opts.addr, num_cpus=5, num_workers=5)
+        address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
         address_info = ray.init()
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
