@@ -51,6 +51,7 @@ once it has processed enough steps.
         self.r = 0.0
         self.terminal = False
         self.features = []
+        self.final = []
 
     def add(self, state, action, reward, value, terminal, features):
         self.states += [state]
@@ -69,6 +70,7 @@ once it has processed enough steps.
         self.r = other.r
         self.terminal = other.terminal
         self.features.extend(other.features)
+        self.final.extend(other.final)
 
 class RunnerThread(threading.Thread):
     """ This thread constantly interacts with the environment and tell it what to do.  """
@@ -146,6 +148,8 @@ runner appends the policy to the queue.
                 if length >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     last_state = env.reset()
                 last_features = policy.get_initial_features()
+                # debug
+                rollout.final.append(rewards)
                 rollout_number += 1
                 length = 0
                 rewards = 0

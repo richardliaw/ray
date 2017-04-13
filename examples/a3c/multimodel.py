@@ -67,7 +67,8 @@ class Training():
                         "size": len(batch.a),
                         "node": ray.services.get_node_ip_address(),
                         "start": _start,
-                        "end": timestamp(), }
+                        "end": timestamp(),
+                        "results": rollout.final }
                 return gradient, info
         ## end inline ddef
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
@@ -92,6 +93,7 @@ class Training():
             # _start = timestamp()
             done_id, gradient_list = ray.wait(gradient_list)
             gradient, info = ray.get(done_id)[0]
+            print(info['results'])
             # _getwait = timestamp()
             self.policy.model_update(gradient)
             # _update = timestamp()
