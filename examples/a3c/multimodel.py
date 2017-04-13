@@ -198,9 +198,9 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
     new_params = ray.get(experiments[0].get_weights())
     [e.set_weights(new_params) for i, e in enumerate(experiments)]
     while True:
-        p_id = ray.put(new_params)
         [e.set_weights(new_params) for i, e in enumerate(experiments)]
-        params = ray.get([e.train(1 * 1e2) for i, e in enumerate(experiments)])
+        print("Set weights")
+        params = ray.get([e.train(1 * 1e3) for i, e in enumerate(experiments)])
         new_params = model_averaging(params)
 
         
