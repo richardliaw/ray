@@ -62,7 +62,7 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="Pong-ram-v0"):
+def train(num_workers, env_name="CartPole-v0"):
     env = create_env(env_name)
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
     agents = [Runner(env_name, i) for i in range(num_workers)]

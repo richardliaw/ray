@@ -15,9 +15,8 @@ logger.setLevel(logging.INFO)
 
 def create_env(env_id):
     env = gym.make(env_id)
-    if "ram" in env_id:
-        return env
-    env = AtariProcessing(env)
+    if "PongDeterministic" in env_id:
+        env = AtariProcessing(env)
     env = Diagnostic(env)
     return env
 

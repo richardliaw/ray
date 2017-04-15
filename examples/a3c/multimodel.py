@@ -13,12 +13,14 @@ import sys, os
 from misc import *
 from envs import create_env
 from LSTM import LSTMPolicy
+from FC import FCPolicy
 from csv import DictWriter
 import threading
+BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, num_workers=2, env_name="PongDeterministic-v3", log_dir="/tmp/results/"):
+    def __init__(self, num_workers=2, env_name="CartPole-v0", log_dir="/tmp/results/"):
         try:
             os.makedirs(log_dir)
         except Exception as e:
@@ -32,12 +34,12 @@ class Training():
         class Runner(object):
             """Actor object to start running simulation on workers.
                 Gradient computation is also executed from this object."""
-            def __init__(self, env_name, actor_id, logdir="results/", start=True):
+            def __init__(self, env_name, actor_id, logdir="./results/tf/", start=True):
                 env = create_env(env_name)
                 self.id = actor_id
                 num_actions = env.action_space.n
-                self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
-                self.runner = RunnerThread(env, self.policy, 20)
+                self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
+                self.runner = RunnerThread(env, self.policy, BATCH)
                 self.env = env
                 self.logdir = logdir
                 if start:
@@ -76,7 +78,7 @@ class Training():
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
 
         env = create_env(self.env_name)
-        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
   
 
     def get_log_dir(self):
@@ -135,7 +137,7 @@ class Training():
 
     def async_train(self, steps_max, addr_info):
         env = create_env(self.env_name)
-        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
         parameters = self.policy.get_weights()
         gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         self.new_param_q = queue.Queue()
@@ -203,28 +205,45 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-        
-
 def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
+    SYNC = 3 * 1e1
     _start = time.time()
     experiments = [Training(num_workers) for i in range(exp_count)]
-    all_info = []
+    all_info = defaultdict(list)
+    all_info["exp_count"] = exp_count
+    all_info["sync"] = SYNC
+    all_info["workers"] = num_workers
+    all_info["batch"] = BATCH
+
     new_params = ray.get(experiments[0].get_weights())
-    import ipdb; ipdb.set_trace()
+    counter = 0
     while True:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         print("Set weights")
-        return_vals = ray.get([e.train(3 * 1e2) for i, e in enumerate(experiments)])
+        return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         params, results = zip(*return_vals)
         stats = [(np.mean(x), np.std(x)) for x in results]
-        print("Time elapsed: " + str(timedelta(seconds=time.time() - _start)))
+        all_info["stats"].append(stats)
+        all_info["TS"].append((time.time() - _start))
+
+        if np.mean(stats, axis=0)[0] > 190:
+            counter += 1
+        else: counter = 0
+        if counter > 4 or (time.time() - _start) > 210:
+            break
+        time_str = str(timedelta(seconds=time.time() - _start))
+        print("Time elapsed: " + time_str)
 
         print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
         # new_params = best_model(params, stats)
-
-    info_list = ray.get(info_list)
-
+    fdir = "./results/{0}_{1}/".format(exp_count, num_workers)
+    try:
+        os.makedirs(fdir)
+    except Exception:
+        pass
+    with open(fdir + time_str + ".json", "w") as f:
+        json.dump(all_info, f)
     print("Done")
 
 if __name__ == '__main__':
@@ -237,7 +256,7 @@ if __name__ == '__main__':
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
-        address_info = ray.init()
+        address_info = ray.init(redirect_output=True)
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
     address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
