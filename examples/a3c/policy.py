@@ -38,12 +38,12 @@ class Policy(object):
         # the "policy gradients" loss:  its derivative is precisely the policy gradient
         # notice that self.ac is a placeholder that is provided externally.
         # adv will contain the advantages, as calculated in process_rollout
-        pi_loss = - tf.reduce_sum(tf.reduce_sum(log_prob_tf * self.ac, [1]) * self.adv)
+        pi_loss = - tf.reduce_mean(tf.reduce_sum(log_prob_tf * self.ac, [1]) * self.adv)
 
         # loss of value function
-        vf_loss = 0.5 * tf.reduce_sum(tf.square(self.vf - self.r))
+        vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
         vf_loss = tf.Print(vf_loss, [vf_loss], "Value Fn Loss")
-        entropy = - tf.reduce_sum(prob_tf * log_prob_tf)
+        entropy = - tf.reduce_mean(prob_tf * log_prob_tf)
 
         bs = tf.to_float(tf.shape(self.x)[0])
         self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01
