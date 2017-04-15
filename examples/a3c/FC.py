@@ -39,7 +39,7 @@ class FCPolicy(Policy):
                 weights_initializer=tf.contrib.layers.xavier_initializer())
 
         # op to sample an action - multinomial takes unnormalized log probs
-        self.sample = tf.reshape(tf.multinomial(self.logits, 1), []) #TODO: change to categorical?
+        self.sample = tf.one_hot(tf.reshape(tf.multinomial(self.logits, 1), []), ac_space) #TODO: change to categorical?
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
         self.feature = [tf.no_op()]
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
