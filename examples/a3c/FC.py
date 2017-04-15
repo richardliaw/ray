@@ -32,11 +32,12 @@ class FCPolicy(Policy):
                 num_outputs=ac_space,
                 activation_fn=None)
 
-        self.vf = tf.contrib.layers.fully_connected(
+        self._vf = tf.contrib.layers.fully_connected(
                 inputs=fc1,
                 num_outputs=1,
                 activation_fn=None,
                 weights_initializer=tf.contrib.layers.xavier_initializer())
+        self.vf = tf.reshape(self.vf, [-1])
 
         # op to sample an action - multinomial takes unnormalized log probs
         self.sample = tf.one_hot(tf.reshape(tf.multinomial(self.logits, 1), []), ac_space) #TODO: change to categorical?
