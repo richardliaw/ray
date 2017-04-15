@@ -12,6 +12,10 @@ def timestamp():
 def time_string():
     return datetime.now().strftime("%Y%m%d_%H_%M_%f")
 
+def parameter_delta(new_params, old_params):
+    import ipdb; ipdb.set_trace()
+    return 
+
 class Profiler(object):
     def __init__(self):
         self.pr = cProfile.Profile()

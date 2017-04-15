@@ -7,6 +7,7 @@ from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
 from LSTM import LSTMPolicy, RawLSTMPolicy
+from weight_holder import WeightHolder
 from FC import FCPolicy
 import tensorflow as tf
 import six.moves.queue as queue
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta
 from misc import timestamp, time_string
 from envs import create_env
 
-POLICY = RawLSTMPolicy
+POLICY = LSTMPolicy
 @ray.actor
 class Runner(object):
     """Actor object to start running simulation on workers.
@@ -61,14 +62,32 @@ class Runner(object):
                 "end": _end,
                 "size": len(batch.a)}
         return gradient, info
+    
+    def optimize(self, params):
+        _start = timestamp()
+        self.policy.set_weights(params)
+        rollout = self.pull_batch_from_queue()
+        batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        gradient = self.policy.get_gradients(batch)
+        self.policy.model_update(gradient)
+        _end = timestamp()
+        info = {"id": self.id,
+                "start_task": _start - extra,
+                "time": _end -  _start,
+                "end": _end,
+                "size": len(batch.a), 
+                "results": batch.final}
+        return parameter_delta(self.policy.get_weights())
 
 
-def train(num_workers, env_name="PongDeterministic-v3"):
+def train(num_workers, step_size, env_name="PongDeterministic-v3"):
     env = create_env(env_name)
     policy = POLICY(env.observation_space.shape, env.action_space.n, 0)
+    holder = WeightHolder(policy)
+    
     agents = [Runner(env_name, i) for i in range(num_workers)]
-    parameters = policy.get_weights()
-    gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
+    parameters = holder.get_weights()
+    delta_list = [agent.optimize(parameters, timestamp()) for agent in agents]
     steps = 0
     obs = 0
 
@@ -76,21 +95,25 @@ def train(num_workers, env_name="PongDeterministic-v3"):
     timing = defaultdict(list)
     from csv import DictWriter
     log = None
-
+    
+    results = []
 
     while True:
         _start = timestamp()
-        done_id, gradient_list = ray.wait(gradient_list)
-        gradient, info = ray.get(done_id)[0]
+        done_id, delta_list = ray.wait(delta_list)
+        delta, info = ray.get(done_id)[0]
         _getwait = timestamp()
-        policy.model_update(gradient)
+        holder.model_update(delta, step_size)
+
         _update = timestamp()
-        parameters = policy.get_weights()
+        parameters = holder.get_weights()
         _endget = timestamp()
         steps += 1
         obs += info["size"]
-        gradient_list.extend([agents[info["id"]].compute_gradient(parameters, timestamp())])
+        delta_list.extend([agents[info["id"]].optimize(parameters, timestamp())])
         _endsubmit = timestamp()
+
+
         timing["Task"].append(info["time"])
         timing["Task_start"].append(info["start_task"])
         timing["Task_end"].append(_getwait - info["end"])
@@ -99,6 +122,11 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         timing["3.Weights"].append(_endget - _update)
         timing["4.Submit"].append(_endsubmit - _endget)
         timing["5.Total"].append(_endsubmit - _start)
+        results.extend(info["results"])
+        if steps % 10 == 0:
+            print("Model performance: Mean: %.4f | Std: %.4f" % (np.mean(results), np.std(results)))
+            results = []
+
         if steps % 200 == 0:
             if log is None:
                 log = DictWriter(open("./timing.csv", "w"), timing.keys())
@@ -111,5 +139,6 @@ def train(num_workers, env_name="PongDeterministic-v3"):
 
 if __name__ == '__main__':
     num_workers = int(sys.argv[1])
-    ray.init(num_workers=1)
-    train(num_workers)
+    step_size = float(sys.argv[2])
+    ray.init(num_workers=1, redirect_output=True)
+    train(num_workers, step_size, env_name="CartPole-v0")

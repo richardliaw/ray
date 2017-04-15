@@ -76,17 +76,3 @@ class LSTMPolicy(Policy):
 
     def get_initial_features(self):
         return self.state_init
-
-
-class RawLSTMPolicy(LSTMPolicy):
-    def get_weights(self):
-        if not hasattr(self, "_weights"):
-            self._weights = self.variables.get_weights()
-        return self._weights
-
-    def set_weights(self, weights):
-        self._weights = weights
-
-    def model_update(self, grads):
-        for var, grad in zip(self.var_list, grads):
-            self._weights[var.name[:-2]] -= 1e-4 * grad
