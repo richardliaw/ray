@@ -7,6 +7,7 @@ from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
 from LSTM import LSTMPolicy
+from FC import FCPolicy
 import tensorflow as tf
 import six.moves.queue as queue
 import gym
@@ -24,7 +25,7 @@ class Runner(object):
         env = create_env(env_name)
         self.id = (actor_id)
         num_actions = env.action_space.n
-        self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
+        self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
         self.runner = RunnerThread(env, self.policy, 20)
         self.env = env
         self.logdir = logdir
@@ -63,7 +64,7 @@ class Runner(object):
 
 def train(num_workers, env_name="PongDeterministic-v3"):
     env = create_env(env_name)
-    policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
+    policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
