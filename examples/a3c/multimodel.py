@@ -205,8 +205,8 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
-    SYNC = 10
+def manager_begin(exp_count=1, num_workers=10, sync=10, infostr="", addr_info=None):
+    SYNC = sync
     _start = time.time()
     experiments = [Training(num_workers) for i in range(exp_count)]
     all_info = defaultdict(list)
@@ -237,7 +237,10 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
         print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
         # new_params = best_model(params, stats)
-    fdir = "./results/{0}steps_{1}_{2}/".format(SYNC, exp_count, num_workers)
+    fdir = "./results/e{0}w{1}_adam{2}_sync{3}/".format(exp_count, 
+                                                      num_workers,
+                                                      adam,
+                                                      SYNC)
     try:
         os.makedirs(fdir)
     except Exception:
@@ -249,7 +252,9 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
     parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
-    parser.add_argument("--runners", default=5, type=int, help="Number of simulations")
+    parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
+    parser.add_argument("--adam", default=1e-5, type=float, help="Adam Step")
+    parser.add_argument("--sync", default=10, type=int, help="Sync Step")
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
     opts = parser.parse_args(sys.argv[1:])
