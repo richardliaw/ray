@@ -6,7 +6,7 @@ import ray
 from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
-from LSTM import LSTMPolicy
+# from LSTM import LSTMPolicy
 from FC import FCPolicy
 import tensorflow as tf
 import six.moves.queue as queue
@@ -62,7 +62,7 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="PongDeterministic-v3"):
+def train(num_workers, env_name="Pong-ram-v0"):
     env = create_env(env_name)
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
     agents = [Runner(env_name, i) for i in range(num_workers)]
