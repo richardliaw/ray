@@ -12,10 +12,11 @@ use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.
 class Policy(object):
     """Policy base class"""
 
-    def __init__(self, ob_space, ac_space, task, name="local"):
+    def __init__(self, ob_space, ac_space, task, name="local", adam=1e-4):
         self.local_steps = 0
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
+        self._adam = adam
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self.setup_graph(ob_space, ac_space)
@@ -52,7 +53,7 @@ class Policy(object):
         self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = tf.train.AdamOptimizer(1e-4)
+        opt = tf.train.AdamOptimizer(self._adam)
         self._apply_gradients = opt.apply_gradients(grads_and_vars)
 
         if summarize:

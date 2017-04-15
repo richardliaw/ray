@@ -20,7 +20,7 @@ BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, num_workers=2, env_name="CartPole-v0", log_dir="/tmp/results/"):
+    def __init__(self, num_workers=2, adam=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
         try:
             os.makedirs(log_dir)
         except Exception as e:
@@ -78,7 +78,7 @@ class Training():
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
 
         env = create_env(self.env_name)
-        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
+        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, adam=adam)
   
 
     def get_log_dir(self):
@@ -108,23 +108,6 @@ class Training():
             steps += 1
             obs += info["size"]
             gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters)])
-            # _endsubmit = timestamp()
-            # timing["Task"].append(info["time"])
-            # timing["Task_start"].append(info["start_task"])
-            # timing["Task_end"].append(_getwait - info["end"])
-            # timing["1.Wait"].append(_getwait - _start)
-            # timing["2.Update"].append(_update - _getwait)
-            # timing["3.Weights"].append(_endget - _update)
-            # timing["4.Submit"].append(_endsubmit - _endget)
-            # timing["5.Total"].append(_endsubmit - _start)
-            # if steps % 200 == 0:
-            #     if log is None:
-            #         log = DictWriter(open("./timing.csv", "w"), timing.keys())
-            #         log.writeheader()
-            #     print("####"*10 + " ".join(["%s: %f" % (k, np.mean(v)) for k, v in sorted(timing.items())]))
-            #     log.writerow(timing)
-                
-            #     timing = defaultdict(list)
         return self.policy.get_weights(), results
 
     def set_weights(self, weights):
@@ -205,7 +188,7 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def manager_begin(exp_count=1, num_workers=10, sync=10, infostr="", addr_info=None):
+def manager_begin(exp_count=1, num_workers=10, sync=10, adam=1e-4, infostr="", addr_info=None):
     SYNC = sync
     _start = time.time()
     experiments = [Training(num_workers) for i in range(exp_count)]
@@ -269,5 +252,7 @@ if __name__ == '__main__':
     # addr_info_id = ray.put(address_info)
     exp = manager_begin(opts.num_experiments, 
                         num_workers=opts.runners, 
+                        sync=opts.sync,
+                        adam=opts.adam,
                         infostr=opts.info,
                         addr_info=address_info)
