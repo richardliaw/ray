@@ -206,7 +206,7 @@ def best_model(params, stats):
     return params[best]
 
 def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
-    SYNC = 3 * 1e1
+    SYNC = 10
     _start = time.time()
     experiments = [Training(num_workers) for i in range(exp_count)]
     all_info = defaultdict(list)
@@ -237,7 +237,7 @@ def manager_begin(exp_count=1, num_workers=10, infostr="", addr_info=None):
         print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
         # new_params = best_model(params, stats)
-    fdir = "./results/{0}_{1}/".format(exp_count, num_workers)
+    fdir = "./results/{0}steps_{1}_{2}/".format(SYNC, exp_count, num_workers)
     try:
         os.makedirs(fdir)
     except Exception:
