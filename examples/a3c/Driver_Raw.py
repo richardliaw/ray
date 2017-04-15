@@ -6,7 +6,7 @@ import ray
 from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
-from LSTM import LSTMPolicy, RawLSTMPolicy
+from LSTM import LSTMPolicy
 from weight_holder import WeightHolder
 from FC import FCPolicy
 import tensorflow as tf
@@ -15,10 +15,10 @@ import gym
 import sys
 import os
 from datetime import datetime, timedelta
-from misc import timestamp, time_string
+from misc import timestamp, time_string, parameter_delta
 from envs import create_env
 
-POLICY = LSTMPolicy
+POLICY = FCPolicy 
 @ray.actor
 class Runner(object):
     """Actor object to start running simulation on workers.
@@ -63,7 +63,7 @@ class Runner(object):
                 "size": len(batch.a)}
         return gradient, info
     
-    def optimize(self, params):
+    def optimize(self, params, extra):
         _start = timestamp()
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
@@ -76,8 +76,8 @@ class Runner(object):
                 "time": _end -  _start,
                 "end": _end,
                 "size": len(batch.a), 
-                "results": batch.final}
-        return parameter_delta(self.policy.get_weights())
+                "results": rollout.final}
+        return parameter_delta(self.policy.get_weights(), params), info
 
 
 def train(num_workers, step_size, env_name="PongDeterministic-v3"):

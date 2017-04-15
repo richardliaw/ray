@@ -13,8 +13,8 @@ def time_string():
     return datetime.now().strftime("%Y%m%d_%H_%M_%f")
 
 def parameter_delta(new_params, old_params):
-    import ipdb; ipdb.set_trace()
-    return 
+    result = {k: new_params[k] - old_params[k] for k in new_params}
+    return result
 
 class Profiler(object):
     def __init__(self):

@@ -1,6 +1,7 @@
 class WeightHolder():
-	def __init__(self, policy):
-		self.variables = policy.variables
+    def __init__(self, policy):
+        self.variables = policy.variables
+        self.var_list = policy.var_list
 
     def get_weights(self):
         if not hasattr(self, "_weights"):
@@ -11,5 +12,6 @@ class WeightHolder():
         self._weights = weights
 
     def model_update(self, grads, step):
-        for var, grad in zip(self.var_list, grads):
-            self._weights[var.name[:-2]] -= step * grad
+        for var, grad in grads.items():
+            print(grad)
+            self._weights[var] -= step * grad
