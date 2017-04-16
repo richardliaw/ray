@@ -1,4 +1,5 @@
 from multimodel import run_multimodel_experiment
+import ray
 import os
 import json
 #
@@ -17,15 +18,17 @@ def save_results(exp_results):
 
 def main():
     ray.init(redirect_output=True)
+    import ipdb; ipdb.set_trace()
     all_experiments = []
     for repeat in range(3):
         for sync in [10, 30, 100]:
-            for learning_rate in [10**(-x) for x in range(2, 5)]
+            for learning_rate in [10**(-x) for x in range(2, 5)]:
                 all_experiments.append(run_multimodel_experiment.remote())
 
     while len(all_experiments):
         done, all_experiments = ray.wait(all_experiments)
         results = ray.get(done)
+        import ipdb; ipdb.set_trace()
         save_results(results)
 
 if __name__ == '__main__':
