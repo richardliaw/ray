@@ -56,8 +56,9 @@ class Policy(object):
         self.grads, _ = tf.clip_by_global_norm(grads, 40.0)
 
         grads_and_vars = list(zip(self.grads, self.var_list))
-        opt = self.optimizer(self.opt_hparams['learning_rate'])
-        self._apply_gradients = opt.apply_gradients(grads_and_vars)
+
+        self.opt = self.optimizer(self.opt_hparams['learning_rate'])
+        self._apply_gradients = self.opt.apply_gradients(grads_and_vars)
 
         if summarize:
             tf.summary.scalar("model/policy_loss", pi_loss / bs)

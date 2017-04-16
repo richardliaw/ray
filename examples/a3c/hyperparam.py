@@ -38,7 +38,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
     @ray.actor
     class Training():
         def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
-            assert type(adam) == bool
+            adam = bool(adam)
             try:
                 os.makedirs(log_dir)
             except Exception as e:
@@ -98,7 +98,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
             env = create_env(self.env_name)
             self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
             if adam:
-                assert self.policy.optimizer.get_name() == "Adam"
+                assert self.policy.opt.get_name() == "Adam"
       
     
         def get_log_dir(self):
@@ -247,7 +247,9 @@ def save_results(exp_results):
 
 def main(addr=None):
     if addr:
-        ray.init(num_workers=1, redis_address=addr)
+        ray.init(redis_address=addr)
+    else:
+        ray.init(num_workers=1) #, redirect_output=True)
     all_experiments = []
     num_models = 2
     runners = 6
@@ -257,6 +259,7 @@ def main(addr=None):
                 all_experiments.append(run_multimodel_experiment.remote(num_models, runners, sync, learning_rate))
 
             while len(all_experiments):
+                print("waiting...")
                 done, all_experiments = ray.wait(all_experiments)
                 results = ray.get(done)
                 save_results(results)
