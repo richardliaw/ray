@@ -247,18 +247,18 @@ def save_results(exp_results):
 
 def main():
     ray.init(num_workers=1)
-    import ipdb; ipdb.set_trace()
     all_experiments = []
+    num_models = 2
+    runners = 6
     for repeat in range(3):
         for sync in [10, 30, 100]:
             for learning_rate in [10**(-x) for x in range(2, 5)]:
-                all_experiments.append(run_multimodel_experiment.remote())
+                all_experiments.append(run_multimodel_experiment.remote(num_models, runners, sync, learning_rate))
 
-    while len(all_experiments):
-        done, all_experiments = ray.wait(all_experiments)
-        results = ray.get(done)
-        import ipdb; ipdb.set_trace()
-        save_results(results)
+            while len(all_experiments):
+                done, all_experiments = ray.wait(all_experiments)
+                results = ray.get(done)
+                save_results(results)
 
 
 
