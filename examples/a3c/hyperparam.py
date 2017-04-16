@@ -32,8 +32,8 @@ def best_model(params, stats):
     return params[best]
 
 @ray.remote
-def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
-                    sync=10, learning_rate=1e-4, infostr="", addr_info=None):
+def run_multimodel_experiment(exp_count=1, num_workers=10, 
+                    sync=10, learning_rate=1e-4, adam=False, infostr="", addr_info=None):
 
     @ray.actor
     class Training():
@@ -196,18 +196,20 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
             pass
     
     SYNC = sync
-    _start = time.time()
     experiments = [Training(num_workers, adam) for i in range(exp_count)]
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
     all_info["sync"] = SYNC
     all_info["workers"] = num_workers
     all_info["batch"] = BATCH
+    _start = None
 
     new_params = ray.get(experiments[0].get_weights())
     counter = 0
     while True:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
+        if _start is None:
+            _start = time.time()
         print("Set weights")
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         params, results = zip(*return_vals)
@@ -241,7 +243,7 @@ def save_results(exp_results):
         os.makedirs(fdir)
     except Exception:
         pass
-    with open(fdir + time.time() + ".json", "w") as f:
+    with open(fdir + time_string() + ".json", "w") as f:
         json.dump(exp_results, f)
     print("Done")
 
@@ -251,18 +253,28 @@ def main(addr=None):
     else:
         ray.init(num_workers=1) #, redirect_output=True)
     all_experiments = []
+    sync = 20
     num_models = 2
     runners = 6
     for repeat in range(3):
-        for sync in [10, 30, 100]:
-            for learning_rate in [10**(-x) for x in range(2, 5)]:
+        for num_models in [2, 4, 6]:
+            for learning_rate in [10**(-x) for x in range(3, 6)]:
                 all_experiments.append(run_multimodel_experiment.remote(num_models, runners, sync, learning_rate))
 
-            while len(all_experiments):
-                print("waiting...")
-                done, all_experiments = ray.wait(all_experiments)
-                results = ray.get(done)
-                save_results(results)
+        while len(all_experiments) > 4:
+            print("waiting...{}".format(len(all_experiments)))
+            print(time_string())
+            done, all_experiments = ray.wait(all_experiments)
+            results = ray.get(done)[0]
+            x = ray.error_info()
+            print(x)
+            save_results(results)
+    while len(all_experiments):
+        print("waiting...{}".format(len(all_experiments)))
+        print(time_string())
+        done, all_experiments = ray.wait(all_experiments, timeout=1e5)
+        results = ray.get(done)[0]
+        save_results(results)
 
 
 
