@@ -38,7 +38,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
     @ray.actor
     class Training():
         def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
-            env = create_env(self.env_name)
+            env = create_env(env_name)
       
             self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
             if adam:
