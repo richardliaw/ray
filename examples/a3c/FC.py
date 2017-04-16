@@ -15,15 +15,15 @@ class FCPolicy(Policy):
         self.x = tf.placeholder(tf.float32,
                 shape=[None] + list(ob_space)) 
 
-        fc1 = tf.contrib.layers.fully_connected(
-                inputs=self.x,
-                num_outputs=16,
-                activation_fn=tf.nn.relu,
-                weights_initializer=tf.contrib.layers.xavier_initializer())
+        #fc1 = tf.contrib.layers.fully_connected(
+        #        inputs=self.x,
+        #        num_outputs=16,
+        #        activation_fn=tf.nn.relu,
+        #        weights_initializer=tf.contrib.layers.xavier_initializer())
 
         fc2 = tf.contrib.layers.fully_connected(
-                inputs=fc1,
-                num_outputs=16,
+                inputs=self.x,
+                num_outputs=64,
                 activation_fn=tf.nn.relu,
                 weights_initializer=tf.contrib.layers.xavier_initializer())
         

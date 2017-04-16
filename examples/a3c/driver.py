@@ -62,9 +62,10 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="CartPole-v0"):
+def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     env = create_env(env_name)
-    policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
+    cfg = {"learning_rate": 5e-3}
+    policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
@@ -85,6 +86,7 @@ def train(num_workers, env_name="CartPole-v0"):
         policy.model_update(gradient)
         _update = timestamp()
         parameters = policy.get_weights()
+        print(" ".join(["%s: %0.5f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "bias" not in k]))
         _endget = timestamp()
         steps += 1
         obs += info["size"]

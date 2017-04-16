@@ -220,7 +220,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
         if np.mean(stats, axis=0)[0] > 190:
             counter += 1
         else: counter = 0
-        if counter > 4 or (time.time() - _start) > 210:
+        if counter > 4 or (time.time() - _start) > 300:
             break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
