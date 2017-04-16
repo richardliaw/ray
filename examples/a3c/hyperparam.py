@@ -245,8 +245,9 @@ def save_results(exp_results):
         json.dump(exp_results, f)
     print("Done")
 
-def main():
-    ray.init(num_workers=1)
+def main(addr=None):
+    if addr:
+        ray.init(num_workers=1, redis_address=addr)
     all_experiments = []
     num_models = 2
     runners = 6
@@ -263,16 +264,16 @@ def main():
 
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
+    parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
     # parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
     # parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
     # parser.add_argument("--lr", default=1e-5, type=float, help="LearningRate")
     # parser.add_argument("--adam", default=False, type=bool, help="ADAM")
     # parser.add_argument("--sync", default=10, type=int, help="Sync Step")
-    # parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
+    parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     # parser.add_argument("--info", default="", type=str, help="Information for file name")
-    main()
-    # opts = parser.parse_args(sys.argv[1:])
+    opts = parser.parse_args(sys.argv[1:])
+    main(addr=opts.addr)
     # if opts.addr:
     #     address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     # else:
