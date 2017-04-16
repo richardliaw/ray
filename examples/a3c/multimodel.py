@@ -20,7 +20,8 @@ BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, num_workers=2, adam=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
+    def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
+        assert type(adam) == bool
         try:
             os.makedirs(log_dir)
         except Exception as e:
@@ -78,7 +79,9 @@ class Training():
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
 
         env = create_env(self.env_name)
-        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, adam=adam)
+        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
+        if adam:
+            assert self.policy.optimizer.get_name() == "Adam"
   
 
     def get_log_dir(self):
@@ -188,10 +191,11 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def manager_begin(exp_count=1, num_workers=10, sync=10, adam=1e-4, infostr="", addr_info=None):
+def manager_begin(exp_count=1, num_workers=10, adam=False,
+                    sync=10, learning_rate=1e-4, infostr="", addr_info=None):
     SYNC = sync
     _start = time.time()
-    experiments = [Training(num_workers) for i in range(exp_count)]
+    experiments = [Training(num_workers, adam) for i in range(exp_count)]
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
     all_info["sync"] = SYNC
@@ -220,10 +224,12 @@ def manager_begin(exp_count=1, num_workers=10, sync=10, adam=1e-4, infostr="", a
         print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
         # new_params = best_model(params, stats)
-    fdir = "./results/e{0}w{1}_adam{2}_sync{3}/".format(exp_count, 
+    fdir = "./results/e{0}w{1}_lr{2}_sync{3}/".format(exp_count, 
                                                       num_workers,
-                                                      adam,
+                                                      learning_rate,
                                                       SYNC)
+    if adam:
+        fdir = fdir[:-1] + "adam/"
     try:
         os.makedirs(fdir)
     except Exception:
@@ -236,7 +242,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
     parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
     parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
-    parser.add_argument("--adam", default=1e-5, type=float, help="Adam Step")
+    parser.add_argument("--lr", default=1e-5, type=float, help="LearningRate")
+    parser.add_argument("--adam", default=False, type=bool, help="ADAM")
     parser.add_argument("--sync", default=10, type=int, help="Sync Step")
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
@@ -253,6 +260,7 @@ if __name__ == '__main__':
     exp = manager_begin(opts.num_experiments, 
                         num_workers=opts.runners, 
                         sync=opts.sync,
+                        learning_rate=opts.lr,
                         adam=opts.adam,
                         infostr=opts.info,
                         addr_info=address_info)
