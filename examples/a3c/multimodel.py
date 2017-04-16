@@ -191,7 +191,6 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-@ray.remote
 def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
                     sync=10, learning_rate=1e-4, infostr="", addr_info=None):
     SYNC = sync
@@ -234,58 +233,31 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
     all_info["exp_string"] = fdir
     return all_info
 
-def save_results(exp_results):
-    fdir = exp_results["exp_string"]
-    try:
-        os.makedirs(fdir)
-    except Exception:
-        pass
-    with open(fdir + time.time() + ".json", "w") as f:
-        json.dump(exp_results, f)
-    print("Done")
-
-def main():
-    ray.init(redirect_output=True)
-    import ipdb; ipdb.set_trace()
-    all_experiments = []
-    for repeat in range(3):
-        for sync in [10, 30, 100]:
-            for learning_rate in [10**(-x) for x in range(2, 5)]:
-                all_experiments.append(run_multimodel_experiment.remote())
-
-    while len(all_experiments):
-        done, all_experiments = ray.wait(all_experiments)
-        results = ray.get(done)
-        import ipdb; ipdb.set_trace()
-        save_results(results)
-
-
 
 if __name__ == '__main__':
-    # parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
-    # parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
-    # parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
-    # parser.add_argument("--lr", default=1e-5, type=float, help="LearningRate")
-    # parser.add_argument("--adam", default=False, type=bool, help="ADAM")
-    # parser.add_argument("--sync", default=10, type=int, help="Sync Step")
-    # parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
-    # parser.add_argument("--info", default="", type=str, help="Information for file name")
-    main()
-    # opts = parser.parse_args(sys.argv[1:])
-    # if opts.addr:
-    #     address_info = ray.init(redirect_output=True, redis_address=opts.addr)
-    # else:
-    #     address_info = ray.init(redirect_output=True)
-    # address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
-    # address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
-    # address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
-    # ray.register_class(ray.services.ObjectStoreAddress)
-    # # addr_info_id = ray.put(address_info)
-    # exp_results = run_multimodel_experiment(opts.num_experiments, 
-    #                     num_workers=opts.runners, 
-    #                     sync=opts.sync,
-    #                     learning_rate=opts.lr,
-    #                     adam=opts.adam,
-    #                     infostr=opts.info,
-    #                     addr_info=address_info)
-    # save_results(exp_results)
+    parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
+    parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
+    parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
+    parser.add_argument("--lr", default=1e-5, type=float, help="LearningRate")
+    parser.add_argument("--adam", default=False, type=bool, help="ADAM")
+    parser.add_argument("--sync", default=10, type=int, help="Sync Step")
+    parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
+    parser.add_argument("--info", default="", type=str, help="Information for file name")
+    opts = parser.parse_args(sys.argv[1:])
+    if opts.addr:
+        address_info = ray.init(redirect_output=True, redis_address=opts.addr)
+    else:
+        address_info = ray.init(redirect_output=True)
+    address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
+    address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
+    address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
+    ray.register_class(ray.services.ObjectStoreAddress)
+    # addr_info_id = ray.put(address_info)
+    exp_results = run_multimodel_experiment(opts.num_experiments, 
+                        num_workers=opts.runners, 
+                        sync=opts.sync,
+                        learning_rate=opts.lr,
+                        adam=opts.adam,
+                        infostr=opts.info,
+                        addr_info=address_info)
+    save_results(exp_results)
