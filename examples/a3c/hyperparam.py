@@ -38,6 +38,11 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
     @ray.actor
     class Training():
         def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
+            env = create_env(self.env_name)
+      
+            self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
+            if adam:
+                assert self.policy.opt.get_name() == "Adam"
             adam = bool(adam)
             try:
                 os.makedirs(log_dir)
@@ -95,11 +100,6 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
             ## end inline ddef
             self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
     
-            env = create_env(self.env_name)
-            self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
-            if adam:
-                assert self.policy.opt.get_name() == "Adam"
-      
     
         def get_log_dir(self):
             return self.log_dir
@@ -257,8 +257,8 @@ def main(addr=None):
     num_models = 2
     runners = 6
     for repeat in range(3):
-        for num_models in [2, 4, 6]:
-            for learning_rate in [10**(-x) for x in range(3, 6)]:
+        for learning_rate in [10**(-x) for x in range(3, 6)]:
+            for num_models in [1, 2, 4]:
                 all_experiments.append(run_multimodel_experiment.remote(num_models, runners, sync, learning_rate))
 
         while len(all_experiments) > 4:
