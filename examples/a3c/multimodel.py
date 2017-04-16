@@ -191,7 +191,8 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def manager_begin(exp_count=1, num_workers=10, adam=False,
+@ray.remote
+def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
                     sync=10, learning_rate=1e-4, infostr="", addr_info=None):
     SYNC = sync
     _start = time.time()
@@ -230,13 +231,8 @@ def manager_begin(exp_count=1, num_workers=10, adam=False,
                                                       SYNC)
     if adam:
         fdir = fdir[:-1] + "adam/"
-    try:
-        os.makedirs(fdir)
-    except Exception:
-        pass
-    with open(fdir + time_str + ".json", "w") as f:
-        json.dump(all_info, f)
-    print("Done")
+    all_info["exp_string"] = fdir
+    return all_info
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
@@ -257,10 +253,20 @@ if __name__ == '__main__':
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
     ray.register_class(ray.services.ObjectStoreAddress)
     # addr_info_id = ray.put(address_info)
-    exp = manager_begin(opts.num_experiments, 
+    exp_results = run_multimodel_experiment(opts.num_experiments, 
                         num_workers=opts.runners, 
                         sync=opts.sync,
                         learning_rate=opts.lr,
                         adam=opts.adam,
                         infostr=opts.info,
                         addr_info=address_info)
+
+    fdir = exp_results["exp_string"]
+    try:
+        os.makedirs(fdir)
+    except Exception:
+        pass
+    with open(fdir + time.time() + ".json", "w") as f:
+        json.dump(exp_results, f)
+    print("Done")
+
