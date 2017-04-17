@@ -26,7 +26,7 @@ class Runner(object):
         self.id = (actor_id)
         num_actions = env.action_space.n
         self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
-        self.runner = RunnerThread(env, self.policy, 20)
+        self.runner = RunnerThread(env, self.policy, 50)
         self.env = env
         self.logdir = logdir
         if start:
@@ -51,23 +51,24 @@ class Runner(object):
         _start = timestamp()
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
-        import ipdb; ipdb.set_trace()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
+        # print(np.sum(batch.a, axis=0))
         gradient = self.policy.get_gradients(batch)
+
         _end = timestamp()
         info = {"id": self.id,
                 "start_task": _start - extra,
                 "time": _end -  _start,
                 "end": _end,
+                "result": rollout.final,
                 "size": len(batch.a)}
         return gradient, info
 
 
 def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     env = create_env(env_name)
-    cfg = {"learning_rate": 1e-4}
+    cfg = {"learning_rate": 1e-4 / np.sqrt(num_workers), "adam": False}
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
-    import ipdb; ipdb.set_trace()
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
@@ -79,18 +80,25 @@ def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     from csv import DictWriter
     log = None
 
+    results = []
 
     while True:
         _start = timestamp()
         done_id, gradient_list = ray.wait(gradient_list)
         gradient, info = ray.get(done_id)[0]
+        results.extend(info["result"])
         _getwait = timestamp()
         policy.model_update(gradient)
         _update = timestamp()
         parameters = policy.get_weights()
         if steps % 50 == 0:
-            print("Weights:"+" ".join(["%s: %0.7f" % (k[:10], np.linalg.norm(f)) for k, f in parameters.items() if "bias" not in k]))
-            print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name[:10] , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name]))
+            print(np.mean(results))
+            results = []
+            if any([np.linalg.norm(f) < 1e-3 for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name ]):
+                pass
+                #import ipdb; ipdb.set_trace()
+            print("Weights:"+" ".join(["%s: %0.7f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "action/w" in k]))
+            print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "action/w" in k._variable.name]))
         _endget = timestamp()
         steps += 1
         obs += info["size"]
@@ -116,5 +124,5 @@ def train(num_workers, env_name="Pong-ramDeterministic-v3"):
 
 if __name__ == '__main__':
     num_workers = int(sys.argv[1])
-    ray.init(num_workers=1)
+    ray.init(num_workers=1, redirect_output=True)
     train(num_workers)

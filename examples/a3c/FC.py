@@ -17,35 +17,31 @@ class FCPolicy(Policy):
 
         fc1 = tf.contrib.layers.fully_connected(
                 inputs=self.x,
-                num_outputs=64,
-                activation_fn=tf.nn.relu,
-                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                num_outputs=128,
+                activation_fn=tf.nn.elu,
+                weights_initializer=normalized_columns_initializer(1.0),
                 scope="fc1")
 
         fc2 = tf.contrib.layers.fully_connected(
                 inputs=fc1,
-                num_outputs=64,
-                activation_fn=tf.nn.relu,
-                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                num_outputs=128,
+                activation_fn=tf.nn.elu,
+                weights_initializer=normalized_columns_initializer(1.0),
                 scope="fc2")
         
-        self.logits = tf.contrib.layers.fully_connected(
-                inputs=fc2,
-                num_outputs=ac_space,
-                activation_fn=None,
-                weights_initializer=normalized_columns_initializer(0.01),
-                scope="action")
-        # self.logits = linear(fc2, ac_space, "action", tf.contrib.layers.xavier_initializer())
         # self.logits = tf.contrib.layers.fully_connected(
         #         inputs=fc2,
         #         num_outputs=ac_space,
-        #         activation_fn=None)
+        #         activation_fn=None,
+        #         weights_initializer=normalized_columns_initializer(0.01),
+        #         scope="action")
+        self.logits = linear(fc2, ac_space, "action", normalized_columns_initializer(0.0001))
 
         self._vf = tf.contrib.layers.fully_connected(
                 inputs=fc2,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=normalized_columns_initializer(0.01),
+                weights_initializer=normalized_columns_initializer(0.001),
                 scope="vf")
         self.vf = tf.reshape(self._vf, [-1])
 
