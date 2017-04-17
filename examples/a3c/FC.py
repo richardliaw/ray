@@ -33,7 +33,7 @@ class FCPolicy(Policy):
                 inputs=fc2,
                 num_outputs=ac_space,
                 activation_fn=None,
-                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                weights_initializer=normalized_columns_initializer(0.01),
                 scope="action")
         # self.logits = linear(fc2, ac_space, "action", tf.contrib.layers.xavier_initializer())
         # self.logits = tf.contrib.layers.fully_connected(
@@ -45,7 +45,7 @@ class FCPolicy(Policy):
                 inputs=fc2,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                weights_initializer=normalized_columns_initializer(0.01),
                 scope="vf")
         self.vf = tf.reshape(self._vf, [-1])
 
