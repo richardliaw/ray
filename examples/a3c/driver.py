@@ -51,6 +51,7 @@ class Runner(object):
         _start = timestamp()
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
+        import ipdb; ipdb.set_trace()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         gradient = self.policy.get_gradients(batch)
         _end = timestamp()
@@ -64,8 +65,9 @@ class Runner(object):
 
 def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     env = create_env(env_name)
-    cfg = {"learning_rate": 5e-3}
+    cfg = {"learning_rate": 1e-4}
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
+    import ipdb; ipdb.set_trace()
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
@@ -86,7 +88,9 @@ def train(num_workers, env_name="Pong-ramDeterministic-v3"):
         policy.model_update(gradient)
         _update = timestamp()
         parameters = policy.get_weights()
-        print(" ".join(["%s: %0.5f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "bias" not in k]))
+        if steps % 50 == 0:
+            print("Weights:"+" ".join(["%s: %0.7f" % (k[:10], np.linalg.norm(f)) for k, f in parameters.items() if "bias" not in k]))
+            print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name[:10] , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name]))
         _endget = timestamp()
         steps += 1
         obs += info["size"]

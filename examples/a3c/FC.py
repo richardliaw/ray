@@ -15,19 +15,27 @@ class FCPolicy(Policy):
         self.x = tf.placeholder(tf.float32,
                 shape=[None] + list(ob_space)) 
 
-        #fc1 = tf.contrib.layers.fully_connected(
-        #        inputs=self.x,
-        #        num_outputs=16,
-        #        activation_fn=tf.nn.relu,
-        #        weights_initializer=tf.contrib.layers.xavier_initializer())
-
-        fc2 = tf.contrib.layers.fully_connected(
+        fc1 = tf.contrib.layers.fully_connected(
                 inputs=self.x,
                 num_outputs=64,
                 activation_fn=tf.nn.relu,
-                weights_initializer=tf.contrib.layers.xavier_initializer())
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                scope="fc1")
+
+        fc2 = tf.contrib.layers.fully_connected(
+                inputs=fc1,
+                num_outputs=64,
+                activation_fn=tf.nn.relu,
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                scope="fc2")
         
-        self.logits = linear(fc2, ac_space, "action", normalized_columns_initializer(0.01))
+        self.logits = tf.contrib.layers.fully_connected(
+                inputs=fc2,
+                num_outputs=ac_space,
+                activation_fn=None,
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                scope="action")
+        # self.logits = linear(fc2, ac_space, "action", tf.contrib.layers.xavier_initializer())
         # self.logits = tf.contrib.layers.fully_connected(
         #         inputs=fc2,
         #         num_outputs=ac_space,
@@ -37,13 +45,13 @@ class FCPolicy(Policy):
                 inputs=fc2,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=tf.contrib.layers.xavier_initializer())
+                weights_initializer=tf.contrib.layers.xavier_initializer(),
+                scope="vf")
         self.vf = tf.reshape(self._vf, [-1])
 
         # op to sample an action - multinomial takes unnormalized log probs
         self.sample = categorical_sample(self.logits, ac_space)[0, :]
 
-       # self.sample = tf.one_hot(tf.reshape(tf.multinomial(self.logits, 1), []), ac_space) #TODO: change to categorical?
         self.var_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, tf.get_variable_scope().name)
         self.feature = [tf.no_op()]
         self.global_step = tf.get_variable("global_step", [], tf.int32, initializer=tf.constant_initializer(0, dtype=tf.int32),
