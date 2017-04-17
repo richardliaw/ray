@@ -15,27 +15,28 @@ class FCPolicy(Policy):
         self.x = tf.placeholder(tf.float32,
                 shape=[None] + list(ob_space)) 
 
+        # fc0 = tf.contrib.layers.fully_connected(
+        #         inputs=self.x,
+        #         num_outputs=128,
+        #         activation_fn=tf.nn.elu,
+        #         weights_initializer=normalized_columns_initializer(0.1),
+        #         scope="fc0")
+
         fc1 = tf.contrib.layers.fully_connected(
                 inputs=self.x,
                 num_outputs=128,
                 activation_fn=tf.nn.elu,
-                weights_initializer=normalized_columns_initializer(1.0),
+                weights_initializer=normalized_columns_initializer(0.1),
                 scope="fc1")
 
         fc2 = tf.contrib.layers.fully_connected(
                 inputs=fc1,
                 num_outputs=128,
                 activation_fn=tf.nn.elu,
-                weights_initializer=normalized_columns_initializer(1.0),
+                weights_initializer=normalized_columns_initializer(0.1),
                 scope="fc2")
-        
-        # self.logits = tf.contrib.layers.fully_connected(
-        #         inputs=fc2,
-        #         num_outputs=ac_space,
-        #         activation_fn=None,
-        #         weights_initializer=normalized_columns_initializer(0.01),
-        #         scope="action")
-        self.logits = linear(fc2, ac_space, "action", normalized_columns_initializer(0.0001))
+
+        self.logits = linear(fc2, ac_space, "action", normalized_columns_initializer(0.001))
 
         self._vf = tf.contrib.layers.fully_connected(
                 inputs=fc2,

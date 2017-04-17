@@ -67,7 +67,7 @@ class Runner(object):
 
 def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     env = create_env(env_name)
-    cfg = {"learning_rate": 1e-4 / np.sqrt(num_workers), "adam": False}
+    cfg = {"learning_rate": 3e-5 / np.sqrt(num_workers), "adam": True}
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
@@ -124,5 +124,5 @@ def train(num_workers, env_name="Pong-ramDeterministic-v3"):
 
 if __name__ == '__main__':
     num_workers = int(sys.argv[1])
-    ray.init(num_workers=1, redirect_output=True)
+    ray.init(num_workers=1) # , redirect_output=True)
     train(num_workers)
