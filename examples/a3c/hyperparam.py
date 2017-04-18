@@ -58,6 +58,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
                 """Actor object to start running simulation on workers.
                     Gradient computation is also executed from this object."""
                 def __init__(self, env_name, actor_id, logdir="./results/tf/", start=True):
+                    print("RICHARD: RUNNER %s STARTED" % str(actor_id))
                     env = create_env(env_name)
                     self.id = actor_id
                     num_actions = env.action_space.n
@@ -101,7 +102,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
             self.agents = []
             for i in range(int(num_workers)):
                 self.agents.append(Runner(env_name, i, log_dir))
-                time.sleep(3)
+                time.sleep(5)
     
     
         def get_log_dir(self):
