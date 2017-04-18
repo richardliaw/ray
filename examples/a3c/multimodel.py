@@ -20,8 +20,9 @@ BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
-        assert type(adam) == bool
+    def __init__(self, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v0", log_dir="/tmp/results/"):
+        print( type(opt_type))
+        assert type(opt_type) == str, type(opt_type)
         try:
             os.makedirs(log_dir)
         except Exception as e:
@@ -39,7 +40,7 @@ class Training():
                 env = create_env(env_name)
                 self.id = actor_id
                 num_actions = env.action_space.n
-                self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
+                self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
                 self.runner = RunnerThread(env, self.policy, BATCH)
                 self.env = env
                 self.logdir = logdir
@@ -79,9 +80,9 @@ class Training():
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
 
         env = create_env(self.env_name)
-        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
-        if adam:
-            assert self.policy.optimizer.get_name() == "Adam"
+        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "type": opt_type})
+        if opt_type == "adam":
+            assert self.policy.opt.get_name() == "Adam"
   
 
     def get_log_dir(self):
@@ -98,7 +99,7 @@ class Training():
         results = []
 
         while steps < steps_max:
-            # _start = timestamp()
+            _start = timestamp()
             done_id, gradient_list = ray.wait(gradient_list)
             gradient, info = ray.get(done_id)[0]
             if info['results']:
@@ -111,6 +112,7 @@ class Training():
             steps += 1
             obs += info["size"]
             gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters)])
+            print("Task taking %f..." % (timestamp() - _start))
         return self.policy.get_weights(), results
 
     def set_weights(self, weights):
@@ -123,7 +125,7 @@ class Training():
 
     def async_train(self, steps_max, addr_info):
         env = create_env(self.env_name)
-        self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0)
+        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
         parameters = self.policy.get_weights()
         gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         self.new_param_q = queue.Queue()
@@ -149,6 +151,7 @@ class Training():
             timing["Submit"].append( _end - _endasync)
             timing["Total"].append(_end - _start)
             if steps % 200 == 0:
+                print(v)
                 print("## #" * 10 + str(steps) + " ".join(["%s Time: %f" % (k, np.mean(v)) 
                                     for k, v in sorted(timing.items())]))
             timing = defaultdict(list)
@@ -191,11 +194,11 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
+def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
                     sync=10, learning_rate=1e-4, infostr="", addr_info=None):
     SYNC = sync
     _start = time.time()
-    experiments = [Training(num_workers, adam) for i in range(exp_count)]
+    experiments = [Training(num_workers, opt_type) for i in range(exp_count)]
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
     all_info["sync"] = SYNC
@@ -207,19 +210,21 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
     while True:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         print("Set weights")
+        __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
+        print("%d steps: %f time..." % (SYNC, time.time() - __t))
         params, results = zip(*return_vals)
         stats = [(np.mean(x), np.std(x)) for x in results]
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
 
-        if np.mean(stats, axis=0)[0] > 190:
+        if np.mean(stats, axis=0)[0] > -15:
             counter += 1
-        else: counter = 0
-        if counter > 4 or (time.time() - _start) > 210:
+        if counter > 4:
             break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
+        print("Results", results)
 
         print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
@@ -228,7 +233,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
                                                       num_workers,
                                                       learning_rate,
                                                       SYNC)
-    if adam:
+    if opt_type == "adam":
         fdir = fdir[:-1] + "adam/"
     all_info["exp_string"] = fdir
     return all_info
@@ -237,9 +242,9 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, adam=False,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
     parser.add_argument("--num-experiments", default=1, type=int, help="The number of training experiments")
-    parser.add_argument("--runners", default=6, type=int, help="Number of simulations")
-    parser.add_argument("--lr", default=1e-5, type=float, help="LearningRate")
-    parser.add_argument("--adam", default=False, type=bool, help="ADAM")
+    parser.add_argument("--runners", default=12, type=int, help="Number of simulations")
+    parser.add_argument("--lr", default=1e-4, type=float, help="LearningRate")
+    parser.add_argument("--type", default="adam", type=str, help="Type of Optimizer")
     parser.add_argument("--sync", default=10, type=int, help="Sync Step")
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
@@ -247,7 +252,7 @@ if __name__ == '__main__':
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
-        address_info = ray.init(redirect_output=True)
+        address_info = ray.init(redirect_output=False)
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
     address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
@@ -257,7 +262,7 @@ if __name__ == '__main__':
                         num_workers=opts.runners, 
                         sync=opts.sync,
                         learning_rate=opts.lr,
-                        adam=opts.adam,
+                        opt_type=opts.type,
                         infostr=opts.info,
                         addr_info=address_info)
     save_results(exp_results)
