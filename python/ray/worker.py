@@ -549,8 +549,8 @@ class Worker(object):
     # Try reconstructing any objects we haven't gotten yet. Try to get them
     # until GET_TIMEOUT_MILLISECONDS milliseconds passes, then repeat.
     while len(unready_ids) > 0:
-      for unready_id in unready_ids:
-        self.local_scheduler_client.reconstruct_object(unready_id)
+      # for unready_id in unready_ids:
+      #   self.local_scheduler_client.reconstruct_object(unready_id)
       # Do another fetch for objects that aren't available locally yet, in case
       # they were evicted since the last fetch.
       self.plasma_client.fetch(list(unready_ids.keys()))
