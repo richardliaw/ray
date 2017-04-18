@@ -12,14 +12,19 @@ use_tf100_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.
 class Policy(object):
     """Policy base class"""
 
-    def __init__(self, ob_space, ac_space, task, name="local", opt_hparams={"learning_rate":1e-4}):
+    def __init__(self, ob_space, ac_space, task, name="local", opt_hparams={"learning_rate":1e-4, "params": {}}):
         self.local_steps = 0
         worker_device = "/job:localhost/replica:0/task:0/cpu:0"
         self.g = tf.Graph()
         self.optimizer = tf.train.GradientDescentOptimizer
         self.opt_hparams = opt_hparams
-        if "adam" in opt_hparams and opt_hparams["adam"]:
-            self.optimizer = tf.train.AdamOptimizer
+        if "params" not in self.opt_hparams:
+            self.opt_hparams["params"] = {}
+        if "type" in opt_hparams:
+            if opt_hparams["type"] == "adam":
+                self.optimizer = tf.train.AdamOptimizer
+            elif opt_hparams["type"] == "rmsprop":
+                self.optimizer = tf.train.RMSPropOptimizer
         with self.g.as_default(), tf.device(worker_device):
             with tf.variable_scope(name):
                 self.setup_graph(ob_space, ac_space)
@@ -57,7 +62,7 @@ class Policy(object):
 
         grads_and_vars = list(zip(self.grads, self.var_list))
 
-        self.opt = self.optimizer(self.opt_hparams['learning_rate'])
+        self.opt = self.optimizer(self.opt_hparams['learning_rate'], **self.opt_hparams["params"])
         self._apply_gradients = self.opt.apply_gradients(grads_and_vars)
 
         if summarize:

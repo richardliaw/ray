@@ -21,12 +21,12 @@ from envs import create_env
 class Runner(object):
     """Actor object to start running simulation on workers.
         Gradient computation is also executed from this object."""
-    def __init__(self, env_name, actor_id, logdir="results/", start=True):
+    def __init__(self, env_name, actor_id, logdir="./exp_results/", start=True):
         env = create_env(env_name)
         self.id = (actor_id)
         num_actions = env.action_space.n
         self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
-        self.runner = RunnerThread(env, self.policy, 50)
+        self.runner = RunnerThread(env, self.policy, 10)
         self.env = env
         self.logdir = logdir
         if start:
@@ -67,7 +67,7 @@ class Runner(object):
 
 def train(num_workers, env_name="Pong-ramDeterministic-v3"):
     env = create_env(env_name)
-    cfg = {"learning_rate": 3e-5 / np.sqrt(num_workers), "adam": True}
+    cfg = {"learning_rate": 2e-6, "type": "rmsprop", "params": {"decay": 0.99}}
     policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()

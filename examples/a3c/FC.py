@@ -18,21 +18,21 @@ class FCPolicy(Policy):
         # fc0 = tf.contrib.layers.fully_connected(
         #         inputs=self.x,
         #         num_outputs=128,
-        #         activation_fn=tf.nn.elu,
+        #         activation_fn=tf.nn.relu,
         #         weights_initializer=normalized_columns_initializer(0.1),
         #         scope="fc0")
 
         fc1 = tf.contrib.layers.fully_connected(
                 inputs=self.x,
                 num_outputs=128,
-                activation_fn=tf.nn.elu,
+                activation_fn=tf.nn.relu,
                 weights_initializer=normalized_columns_initializer(0.1),
                 scope="fc1")
 
         fc2 = tf.contrib.layers.fully_connected(
                 inputs=fc1,
                 num_outputs=128,
-                activation_fn=tf.nn.elu,
+                activation_fn=tf.nn.relu,
                 weights_initializer=normalized_columns_initializer(0.1),
                 scope="fc2")
 
@@ -42,7 +42,7 @@ class FCPolicy(Policy):
                 inputs=fc2,
                 num_outputs=1,
                 activation_fn=None,
-                weights_initializer=normalized_columns_initializer(0.001),
+                weights_initializer=normalized_columns_initializer(0.01),
                 scope="vf")
         self.vf = tf.reshape(self._vf, [-1])
 
