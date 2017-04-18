@@ -6,7 +6,7 @@ import ray
 from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
-# from LSTM import LSTMPolicy
+from LSTM import LSTMPolicy
 from FC import FCPolicy
 import tensorflow as tf
 import six.moves.queue as queue
@@ -25,8 +25,8 @@ class Runner(object):
         env = create_env(env_name)
         self.id = (actor_id)
         num_actions = env.action_space.n
-        self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
-        self.runner = RunnerThread(env, self.policy, 10)
+        self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
+        self.runner = RunnerThread(env, self.policy, 20)
         self.env = env
         self.logdir = logdir
         if start:
@@ -65,10 +65,10 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="Pong-ramDeterministic-v3"):
+def train(num_workers, env_name="PongDeterministic-v3"):
     env = create_env(env_name)
-    cfg = {"learning_rate": 2e-6, "type": "rmsprop", "params": {"decay": 0.99}}
-    policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
+    cfg = {"learning_rate": 1e-4, "type": "adam"}
+    policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
     agents = [Runner(env_name, i) for i in range(num_workers)]
     parameters = policy.get_weights()
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
@@ -91,14 +91,14 @@ def train(num_workers, env_name="Pong-ramDeterministic-v3"):
         policy.model_update(gradient)
         _update = timestamp()
         parameters = policy.get_weights()
-        if steps % 50 == 0:
-            print(np.mean(results))
-            results = []
-            if any([np.linalg.norm(f) < 1e-3 for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name ]):
-                pass
-                #import ipdb; ipdb.set_trace()
-            print("Weights:"+" ".join(["%s: %0.7f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "action/w" in k]))
-            print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "action/w" in k._variable.name]))
+        # if steps % 50 == 0:
+        #     print(np.mean(results))
+        #     results = []
+        #     if any([np.linalg.norm(f) < 1e-3 for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name ]):
+        #         pass
+        #         #import ipdb; ipdb.set_trace()
+        #     print("Weights:"+" ".join(["%s: %0.7f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "action/w" in k]))
+        #     print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "action/w" in k._variable.name]))
         _endget = timestamp()
         steps += 1
         obs += info["size"]
