@@ -52,7 +52,6 @@ class Policy(object):
         # loss of value function
         vf_loss = 0.5 * tf.reduce_mean(tf.square(self.vf - self.r))
         entropy = - tf.reduce_mean(prob_tf * log_prob_tf)
-        entropy = tf.Print(entropy , [entropy], "REINF")
 
         bs = tf.to_float(tf.shape(self.x)[0])
         self.loss = pi_loss + 0.5 * vf_loss - entropy * 0.01

@@ -54,6 +54,9 @@ class Runner(object):
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
         # print(np.sum(batch.a, axis=0))
         gradient = self.policy.get_gradients(batch)
+        summary = self.policy.get_summary(batch)
+        self.summary_writer.add_summary(tf.Summary.FromString(summary), self.policy.local_steps)
+        self.summary_writer.flush()
 
         _end = timestamp()
         info = {"id": self.id,
@@ -66,6 +69,7 @@ class Runner(object):
 
 
 def train(num_workers, env_name="PongDeterministic-v3"):
+    FULL_START = timestamp()
     env = create_env(env_name)
     cfg = {"learning_rate": 1e-4, "type": "adam"}
     policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
@@ -74,6 +78,8 @@ def train(num_workers, env_name="PongDeterministic-v3"):
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
     steps = 0
     obs = 0
+
+    counter = 0
 
     ## DEBUG
     timing = defaultdict(list)
@@ -91,9 +97,6 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         policy.model_update(gradient)
         _update = timestamp()
         parameters = policy.get_weights()
-        # if steps % 50 == 0:
-        #     print(np.mean(results))
-        #     results = []
         #     if any([np.linalg.norm(f) < 1e-3 for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name ]):
         #         pass
         #         #import ipdb; ipdb.set_trace()
@@ -112,11 +115,21 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         timing["3.Weights"].append(_endget - _update)
         timing["4.Submit"].append(_endsubmit - _endget)
         timing["5.Total"].append(_endsubmit - _start)
+        timing["Current"].append(_endsubmit - FULL_START)
+        if steps % 500 == 0:
+            m = np.mean(results)
+            print(m)
+            results = []
+            counter += (m > -15)
+            if counter == 5:
+                log.writerow(timing)
+                return
         if steps % 200 == 0:
             if log is None:
-                log = DictWriter(open("./timing.csv", "w"), timing.keys())
+                log = DictWriter(open("./results/timing_%d/%s.csv" % (num_workers, time_string()), "w"), timing.keys())
                 log.writeheader()
-            print("####"*10 + " ".join(["%s: %f" % (k, np.mean(v)) for k, v in sorted(timing.items())]))
+            timing = {k: np.mean(v) for k, v in timing.items()}
+            print("####"*10 + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())]))
             log.writerow(timing)
             
             timing = defaultdict(list)
@@ -124,5 +137,5 @@ def train(num_workers, env_name="PongDeterministic-v3"):
 
 if __name__ == '__main__':
     num_workers = int(sys.argv[1])
-    ray.init(num_workers=1) # , redirect_output=True)
+    ray.init(num_workers=1 , redirect_output=True)
     train(num_workers)
