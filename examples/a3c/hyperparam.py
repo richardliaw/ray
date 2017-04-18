@@ -32,12 +32,12 @@ def best_model(params, stats):
     return params[best]
 
 @ray.remote
-def run_multimodel_experiment(exp_count=1, num_workers=10, 
+def run_multimodel_experiment(eid, exp_count=1, num_workers=10, 
                     sync=10, learning_rate=1e-4, adam=False, infostr="", addr_info=None):
 
     @ray.actor
     class Training():
-        def __init__(self, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
+        def __init__(self, id_str, num_workers=2, adam=False, learning_rate=1e-4, env_name="CartPole-v0", log_dir="/tmp/results/"):
             env = create_env(env_name)
       
             self.policy = FCPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "adam": adam})
@@ -57,12 +57,12 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
             class Runner(object):
                 """Actor object to start running simulation on workers.
                     Gradient computation is also executed from this object."""
-                def __init__(self, env_name, actor_id, logdir="./results/tf/", start=True):
-                    print("RICHARD: RUNNER %s STARTED" % str(actor_id))
+                def __init__(self, env_name, actor_id_str, actor_id, logdir="./results/tf/", start=True):
+                    print("RICHARD: RUNNER %s STARTED" % str(actor_id_str))
                     env = create_env(env_name)
                     self.id = actor_id
                     num_actions = env.action_space.n
-                    self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id)
+                    self.policy = FCPolicy(env.observation_space.shape, num_actions, actor_id_str)
                     self.runner = RunnerThread(env, self.policy, BATCH)
                     self.env = env
                     self.logdir = logdir
@@ -101,7 +101,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
             ## end inline ddef
             self.agents = []
             for i in range(int(num_workers)):
-                self.agents.append(Runner(env_name, i, log_dir))
+                self.agents.append(Runner(env_name, id_str + "_RUNNER" + str(i), i, log_dir))
                 time.sleep(5)
     
     
@@ -202,7 +202,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10,
     SYNC = sync
     experiments = []
     for i in range(exp_count):
-        experiments.append(Training(num_workers, adam))
+        experiments.append(Training("EXP" +str(eid) + "_MODEL" + str(i), num_workers, adam))
         time.sleep(7)
     print("Waiting for exp to start...")
     all_info = defaultdict(list)
@@ -267,16 +267,17 @@ def main(addr=None):
     for repeat in range(3):
         for learning_rate in [10**(-x) for x in range(3, 6)]:
             for num_models in [1, 2, 4]:
-                all_experiments.append(run_multimodel_experiment.remote(num_models, runners, sync, learning_rate))
+                eid = len(all_experiments)
+                all_experiments.append(run_multimodel_experiment.remote(eid, num_models, runners, sync, learning_rate))
                 print("Giving results some time to start")
                 time.sleep(5)
 
-        while len(all_experiments):
-            print("waiting...{}".format(len(all_experiments)))
-            print(time_string())
-            done, all_experiments = ray.wait(all_experiments)
-            results = ray.get(done)[0]
-            save_results(results)
+                while len(all_experiments):
+                    print("waiting...{}".format(len(all_experiments)))
+                    print(time_string())
+                    done, all_experiments = ray.wait(all_experiments)
+                    results = ray.get(done)[0]
+                    save_results(results)
 
 
 
