@@ -14,7 +14,7 @@ import gym
 import sys
 import os
 from datetime import datetime, timedelta
-from misc import timestamp, time_string
+from misc import timestamp, time_string, try_makedirs
 from envs import create_env
 
 @ray.actor
@@ -126,7 +126,10 @@ def train(num_workers, env_name="PongDeterministic-v3"):
                 return
         if steps % 200 == 0:
             if log is None:
-                log = DictWriter(open("./results/timing_%d/%s.csv" % (num_workers, time_string()), "w"), timing.keys())
+                fdir = "./results/timing_%d/" % (num_workers)
+                fname = "%s.csv" % time_string()
+                try_makedirs(fdir)
+                log = DictWriter(open(fdir + fname, "w"), timing.keys())
                 log.writeheader()
             timing = {k: np.mean(v) for k, v in timing.items()}
             print("####"*10 + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())]))

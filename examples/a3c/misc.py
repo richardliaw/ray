@@ -5,12 +5,19 @@ from __future__ import print_function
 import numpy as np 
 from datetime import datetime
 import cProfile, pstats, io
+import os
 
 def timestamp():
     return datetime.now().timestamp()
 
 def time_string():
     return datetime.now().strftime("%Y%m%d_%H_%M_%f")
+
+def try_makedirs(dir_name):
+    try:
+        os.makedirs(dir_name)
+    except Exception:
+        print("Directory already made")
 
 class Profiler(object):
     def __init__(self):
