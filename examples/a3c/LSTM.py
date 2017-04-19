@@ -65,7 +65,19 @@ class LSTMPolicy(Policy):
             self.state_in[1]: batch.features[1],
         }
         self.local_steps += 1
-        return self.sess.run(self.grads, feed_dict=feed_dict)
+        return self.sess.run(self.grads , feed_dict=feed_dict)
+
+    def get_summary(self, batch):
+        feed_dict = {
+            self.x: batch.si,
+            self.ac: batch.a,
+            self.adv: batch.adv,
+            self.r: batch.r,
+            self.state_in[0]: batch.features[0],
+            self.state_in[1]: batch.features[1],
+        }
+        return self.sess.run(self.summary_op, feed_dict=feed_dict)
+
 
     def act(self, ob, c, h):
         return self.sess.run([self.sample, self.vf] + self.state_out,

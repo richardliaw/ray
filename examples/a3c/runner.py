@@ -12,6 +12,7 @@ import threading
 import distutils.version
 use_tf12_api = distutils.version.LooseVersion(tf.VERSION) >= distutils.version.LooseVersion('0.12.0')
 from datetime import datetime
+import ray
 
 def discount(x, gamma):
     return scipy.signal.lfilter([1], [1, -gamma], x[::-1], axis=0)[::-1]
@@ -50,6 +51,7 @@ once it has processed enough steps.
         self.r = 0.0
         self.terminal = False
         self.features = []
+        self.final = []
 
     def add(self, state, action, reward, value, terminal, features):
         self.states += [state]
@@ -68,6 +70,7 @@ once it has processed enough steps.
         self.r = other.r
         self.terminal = other.terminal
         self.features.extend(other.features)
+        self.final.extend(other.final)
 
 class RunnerThread(threading.Thread):
     """ This thread constantly interacts with the environment and tell it what to do.  """
@@ -99,9 +102,6 @@ class RunnerThread(threading.Thread):
             # won't die with it, unless the timeout is set to some large number.  This is an empirical
             # observation.
             self.queue.put(next(rollout_provider), timeout=600.0)
-            # print("Current Q count: %d" % len(self.queue.queue))
-
-
 
 def env_runner(env, policy, num_local_steps, summary_writer, render):
     """
@@ -148,6 +148,8 @@ runner appends the policy to the queue.
                 if length >= timestep_limit or not env.metadata.get('semantics.autoreset'):
                     last_state = env.reset()
                 last_features = policy.get_initial_features()
+                # debug
+                rollout.final.append(rewards)
                 rollout_number += 1
                 length = 0
                 rewards = 0
@@ -158,3 +160,25 @@ runner appends the policy to the queue.
 
         # once we have enough experience, yield it, and have the ThreadRunner place it on a queue
         yield rollout
+
+
+class UpdateThread(threading.Thread):
+    """ This thread updates the master copy of the Policy """
+    def __init__(self, policy, new_param_q, async_task_q, worker_info):
+        threading.Thread.__init__(self)
+        self.policy = policy
+        self.new_param_q = new_param_q
+        self.async_task_q = async_task_q
+        self.w = ray.worker.Worker()
+        ray.worker.connect(worker_info, mode=ray.SCRIPT_MODE, worker=self.w)
+        self.start()
+
+    def run(self):
+        policy = self.policy
+        while True:
+            actor_id, gradient= self.async_task_q.get()
+
+            policy.model_update(gradient)
+            parameters = policy.get_weights()
+            param_id = ray.put(parameters, worker=self.w)
+            self.new_param_q.put((actor_id, param_id.id()), timeout=600.0)
