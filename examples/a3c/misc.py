@@ -14,6 +14,7 @@ def time_string():
     return datetime.now().strftime("%Y%m%d_%H_%M_%f")
 
 def try_makedirs(dir_name):
+    # os.makedirs(dir_name)
     try:
         os.makedirs(dir_name)
     except Exception:

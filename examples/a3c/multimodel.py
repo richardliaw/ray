@@ -79,6 +79,7 @@ class Training():
                 return gradient, info
         ## end inline ddef
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
+        self.num_w = num_workers
 
         env = create_env(self.env_name)
         self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "type": opt_type})
@@ -94,11 +95,7 @@ class Training():
 
     def write_results(self, timing):
         if self.log is None:
-            fdir = "./results/multi_timing_%d/" % (num_workers)
-            fname = "%s.csv" % time_string()
-            try_makedirs(fdir)
-            self.log = DictWriter(open(fdir + fname, "w"), timing.keys())
-            self.log.writeheader()
+            print("writing row")
         self.log.writerow(timing)
 
     def train(self, steps_max):
@@ -135,10 +132,11 @@ class Training():
             timing["5.Total"].append(_endsubmit - _start)
 
         timing = {k: np.mean(v) for k, v in timing.items()}
-        self.write_results(timing)
         timing_str =  str(self.node) + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())])
         training_info["results"] = results
         training_info["timing_str"] = timing_str
+        training_info["timing"] = timing
+        training_info["node"] = self.node
         return self.policy.get_weights(), training_info
 
     def set_weights(self, weights):
@@ -219,6 +217,14 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
+def make_log(nw, timing):
+    fdir = "./results/multi_timing_%d/" % (nw)
+    fname = "%s.csv" % time_string()
+    try_makedirs(fdir)
+    log = DictWriter(open(fdir + fname, "w"), timing.keys())
+    log.writeheader()
+    return log
+
 def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
                     sync=10, learning_rate=1e-4, infostr="", addr_info=None):
     SYNC = sync
@@ -229,11 +235,11 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     all_info["sync"] = SYNC
     all_info["workers"] = num_workers
     all_info["batch"] = BATCH
-
     new_params = ray.get(experiments[0].get_weights())
     counter = 0
     itr = 0
-    while True:
+    log = None
+    while time.time() - _start < 1200:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
@@ -242,6 +248,9 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
         params, information = zip(*return_vals)
         stats = [(np.mean(x["results"]), np.std(x["results"])) for x in information]
         for tup in information:
+            if log is None:
+                log = make_log(num_workers, tup["timing"])
+            log.writerow(tup["timing"])
             print(tup["timing_str"])
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
@@ -263,7 +272,9 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
                                                       SYNC)
     if opt_type == "adam":
         fdir = fdir[:-1] + "adam/"
-    all_info["exp_string"] = fdir
+    try_makedirs(fdir)
+    with open(fdir + time_string() + ".json", "w") as f:
+        json.dump(all_info, f)
     return all_info
 
 
@@ -280,7 +291,7 @@ if __name__ == '__main__':
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
-        address_info = ray.init(redirect_output=True)
+        address_info = ray.init(redirect_output=False )
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
     address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
@@ -293,4 +304,4 @@ if __name__ == '__main__':
                         opt_type=opts.type,
                         infostr=opts.info,
                         addr_info=address_info)
-    save_results(exp_results)
+    # save_results(exp_results)
