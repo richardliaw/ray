@@ -21,7 +21,6 @@ BATCH = 20
 @ray.actor
 class Training():
     def __init__(self, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v0", log_dir="/tmp/results/"):
-        print( type(opt_type))
         assert type(opt_type) == str, type(opt_type)
         try:
             os.makedirs(log_dir)
@@ -58,7 +57,6 @@ class Training():
                 return rollout
 
             def start(self):
-                print("starting runner")
                 summary_writer = tf.summary.FileWriter(os.path.join(self.logdir, "agent_%d" % self.id))
                 self.summary_writer = summary_writer
                 self.runner.start_runner(self.policy.sess, summary_writer)
@@ -95,7 +93,7 @@ class Training():
 
     def train(self, steps_max):
         parameters = self.policy.get_weights()
-        gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
+        gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in self.agents]
         steps = 0
         obs = 0
         timing = defaultdict(list)
@@ -115,7 +113,7 @@ class Training():
             _endget = timestamp()
             steps += 1
             obs += info["size"]
-            gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters)])
+            gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters, timestamp())])
             _endsubmit = timestamp()
             timing["Task"].append(info["time"])
             timing["Task_start"].append(info["start_task"])
@@ -133,7 +131,6 @@ class Training():
         return self.policy.get_weights(), training_info
 
     def set_weights(self, weights):
-        print("Setting weights...")
         self.policy.set_weights(weights)
 
     def get_weights(self):
@@ -227,15 +224,14 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     itr = 0
     while True:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
-        print("Set weights")
         __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         
         print("%d steps: %f time..." % (SYNC, time.time() - __t))
         params, information = zip(*return_vals)
-        stats = [(np.mean(x), np.std(x)) for x in information["results"]]
-        for st in information["timing_str"]:
-            print(st)
+        stats = [(np.mean(x["results"]), np.std(x["results"])) for x in information]
+        for tup in information:
+            print(tup["timing_str"])
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
 
@@ -273,7 +269,7 @@ if __name__ == '__main__':
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
-        address_info = ray.init(redirect_output=False)
+        address_info = ray.init(redirect_output=True)
     address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
     address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
     address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
