@@ -29,7 +29,7 @@ class Training():
             pass
         self.env_name = env_name
         self.log_dir = log_dir
-        self.driver_node = ray.services.get_node_ip_address()
+        self.node = ray.services.get_node_ip_address()
 
         #inline defn needed
         @ray.actor(local=True)
@@ -63,17 +63,19 @@ class Training():
                 self.summary_writer = summary_writer
                 self.runner.start_runner(self.policy.sess, summary_writer)
 
-            def compute_gradient(self, params):
+            def compute_gradient(self, params, tasksub):
                 _start = timestamp()
                 self.policy.set_weights(params)
                 rollout = self.pull_batch_from_queue()
                 batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
                 gradient = self.policy.get_gradients(batch)
+                end = timestamp()
                 info = {"id": self.id,
                         "size": len(batch.a),
                         "node": ray.services.get_node_ip_address(),
-                        "start": _start,
-                        "end": timestamp(),
+                        "start_task": _start - tasksub,
+                        "end": end,
+                        "time": end - _start,
                         "results": rollout.final }
                 return gradient, info
         ## end inline ddef
@@ -88,14 +90,16 @@ class Training():
     def get_log_dir(self):
         return self.log_dir
     
-    def get_driver_node(self):
-        return self.driver_node
+    def get_node(self):
+        return self.node
 
     def train(self, steps_max):
         parameters = self.policy.get_weights()
         gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
         steps = 0
         obs = 0
+        timing = defaultdict(list)
+        training_info = {}
         results = []
 
         while steps < steps_max:
@@ -104,16 +108,29 @@ class Training():
             gradient, info = ray.get(done_id)[0]
             if info['results']:
                 results.extend(info['results'])
-            # _getwait = timestamp()
+            _getwait = timestamp()
             self.policy.model_update(gradient)
-            # _update = timestamp()
+            _update = timestamp()
             parameters = self.policy.get_weights()
-            # _endget = timestamp()
+            _endget = timestamp()
             steps += 1
             obs += info["size"]
             gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters)])
-            print("Task taking %f..." % (timestamp() - _start))
-        return self.policy.get_weights(), results
+            _endsubmit = timestamp()
+            timing["Task"].append(info["time"])
+            timing["Task_start"].append(info["start_task"])
+            timing["Task_end"].append(_getwait - info["end"])
+            timing["1.Wait"].append(_getwait - _start)
+            timing["2.Update"].append(_update - _getwait)
+            timing["3.Weights"].append(_endget - _update)
+            timing["4.Submit"].append(_endsubmit - _endget)
+            timing["5.Total"].append(_endsubmit - _start)
+
+        timing = {k: np.mean(v) for k, v in timing.items()}
+        timing_str =  str(self.node) + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())])
+        training_info["results"] = results
+        training_info["timing_str"] = timing_str
+        return self.policy.get_weights(), training_info
 
     def set_weights(self, weights):
         print("Setting weights...")
@@ -207,14 +224,18 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
 
     new_params = ray.get(experiments[0].get_weights())
     counter = 0
+    itr = 0
     while True:
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         print("Set weights")
         __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
+        
         print("%d steps: %f time..." % (SYNC, time.time() - __t))
-        params, results = zip(*return_vals)
-        stats = [(np.mean(x), np.std(x)) for x in results]
+        params, information = zip(*return_vals)
+        stats = [(np.mean(x), np.std(x)) for x in information["results"]]
+        for st in information["timing_str"]:
+            print(st)
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
 
@@ -224,10 +245,10 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
             break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
-        print("Results", results)
-
-        print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
+        if itr % 5 == 0:
+            print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = model_averaging(params)
+        itr += 1
         # new_params = best_model(params, stats)
     fdir = "./results/e{0}w{1}_lr{2}_sync{3}/".format(exp_count, 
                                                       num_workers,
