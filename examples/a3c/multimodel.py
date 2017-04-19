@@ -28,6 +28,7 @@ class Training():
             pass
         self.env_name = env_name
         self.log_dir = log_dir
+        self.log = None
         self.node = ray.services.get_node_ip_address()
 
         #inline defn needed
@@ -91,6 +92,15 @@ class Training():
     def get_node(self):
         return self.node
 
+    def write_results(self, timing):
+        if self.log is None:
+            fdir = "./results/multi_timing_%d/" % (num_workers)
+            fname = "%s.csv" % time_string()
+            try_makedirs(fdir)
+            self.log = DictWriter(open(fdir + fname, "w"), timing.keys())
+            self.log.writeheader()
+        self.log.writerow(timing)
+
     def train(self, steps_max):
         parameters = self.policy.get_weights()
         gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in self.agents]
@@ -125,6 +135,7 @@ class Training():
             timing["5.Total"].append(_endsubmit - _start)
 
         timing = {k: np.mean(v) for k, v in timing.items()}
+        self.write_results(timing)
         timing_str =  str(self.node) + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())])
         training_info["results"] = results
         training_info["timing_str"] = timing_str
