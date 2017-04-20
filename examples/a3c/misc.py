@@ -41,6 +41,7 @@ class Profiler(object):
 def load_weights(fname):
     with open(fname, "rb") as f:
         parameters = pickle.load(f)
+    return parameters
 
 def save_weights(params, fdir="./progress/", fname="policy.pkl"):
     fdir = os.path.join(fdir, time_string())

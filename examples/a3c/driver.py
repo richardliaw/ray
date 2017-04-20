@@ -126,7 +126,8 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
 
         if steps % 200 == 0:
             if log is None:
-                fdir = "./results/timing_%d/" % (num_workers)
+                extra = "load" if load else ""
+                fdir = "./results/timing_%d%s/" % (num_workers, extra)
                 fname = "%s.csv" % time_string()
                 try_makedirs(fdir)
                 log = DictWriter(open(fdir + fname, "w"), timing.keys())
