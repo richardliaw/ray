@@ -20,12 +20,13 @@ BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v0", log_dir="/tmp/results/"):
+    def __init__(self, mid, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v0", log_dir="/tmp/results/"):
         assert type(opt_type) == str, type(opt_type)
         try:
             os.makedirs(log_dir)
         except Exception as e:
             pass
+        self.mid = mid
         self.env_name = env_name
         self.log_dir = log_dir
         self.log = None
@@ -106,6 +107,7 @@ class Training():
         timing = defaultdict(list)
         training_info = {}
         results = []
+        FULLSTART = timestamp()
 
         while steps < steps_max:
             _start = timestamp()
@@ -133,11 +135,12 @@ class Training():
 
         timing = {k: np.mean(v) for k, v in timing.items()}
         timing_str =  str(self.node) + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())])
-        training_info["results"] = results
-        training_info["timing_str"] = timing_str
-        training_info["timing"] = timing
-        training_info["node"] = self.node
-        return self.policy.get_weights(), training_info
+        timing["results"] = results
+        timing["timing_str"] = timing_str
+        timing["node"] = self.node
+        timing["mid"] = self.mid
+        timing["duration"] = (timestamp(), FULLSTART)
+        return self.policy.get_weights(), timing
 
     def set_weights(self, weights):
         self.policy.set_weights(weights)
@@ -145,66 +148,7 @@ class Training():
     def get_weights(self):
         return self.policy.get_weights()
 
-
-    def async_train(self, steps_max, addr_info):
-        env = create_env(self.env_name)
-        self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0)
-        parameters = self.policy.get_weights()
-        gradient_list = [agent.compute_gradient(parameters) for agent in self.agents]
-        self.new_param_q = queue.Queue()
-        self.async_task_q = queue.Queue(6) # arbitrary
-        update_threads = [UpdateThread(self.policy, 
-                                        self.new_param_q,
-                                        self.async_task_q,
-                                        addr_info) for i in range(1)] # arbitrary
-        steps = 0
-        info_list = []
-        timing = defaultdict(list)
-        while steps < steps_max:
-            _start = timestamp()
-            done_id, gradient_list = ray.wait(gradient_list)
-            _endwait = timestamp()
-            self.async_update(done_id)
-            steps += 1
-            _endasync = timestamp()
-            gradient_list.extend(self.pull_submitted(len(gradient_list) == 0))
-            _end = timestamp()
-            timing["Wait"].append(_endwait - _start)
-            timing["Async"].append(_endasync - _endwait)
-            timing["Submit"].append( _end - _endasync)
-            timing["Total"].append(_end - _start)
-            if steps % 200 == 0:
-                print(v)
-                print("## #" * 10 + str(steps) + " ".join(["%s Time: %f" % (k, np.mean(v)) 
-                                    for k, v in sorted(timing.items())]))
-            timing = defaultdict(list)
-        return info_list
-
-    def async_update(self, done_id):
-        grad, info = ray.get(done_id)[0]
-        self.async_task_q.put((info["id"], grad), timeout=600.0)
-
-        # uthread = UpdateThread(done_id, self.policy, self.new_param_q, self.agents)
-        # uthread.starter()
-
-    def pull_submitted(self, block):
-        """ Pulls a new object id off queue, starts the task """
-        params = []
-        if block:
-            params.append(self.new_param_q.get())
-        while True:
-            try:
-                params.append(self.new_param_q.get_nowait())
-            except queue.Empty:
-                break
-        submitted = [self.agents[actor_id].compute_gradient(ray.local_scheduler.ObjectID(param_str) )
-                        for actor_id, param_str in params]
-        return submitted
-    
-    def get_gradient(self):
-        pass
-
-def model_averaging(params):
+def model_averaging(params, stats=None):
     loader = defaultdict(list)
     for param_dict in params:
         for k, v in param_dict.items():
@@ -212,13 +156,23 @@ def model_averaging(params):
     return {k: np.mean(v, axis=0) for k ,v in loader.items()}
 
 def best_model(params, stats):
-    mean = [m - s for m, s in stats]
+    mean = [m for m, s in stats]
+    print(mean)
     best = np.argmax(mean)
     print("Choosing %d..." % best)
     return params[best]
 
-def make_log(params, timing):
-    fdir = "./results/" + "-".join(["%s%d" % (k, v) for k, v in params.items()])
+def drop_half(params, stats):
+    mean = [m for m, s in stats]
+    half = int(-len(mean) / 2)
+    idx = np.argsort(mean)[half:]
+    idx = idx.repeat(2)
+    return [params[i] for i in idx]
+
+def generate_path(params):
+    return  "./results/" + "-".join(["%s%s" % (k, str(v)) for k, v in sorted(params.items())]) + "/"
+
+def make_log(fdir, timing):
     fname = "%s.csv" % time_string()
     try_makedirs(fdir)
     log = DictWriter(open(os.path.join(fdir, fname), "w"), timing.keys())
@@ -226,10 +180,11 @@ def make_log(params, timing):
     return log
 
 def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
-                    sync=10, learning_rate=1e-4, infostr="", addr_info=None):
+                    sync=10, learning_rate=1e-4, infostr="", addr_info=None, aggr_param="average"):
+    aggregation = aggregation_function(aggr_param)
     SYNC = sync
     _start = time.time()
-    experiments = [Training(num_workers, opt_type) for i in range(exp_count)]
+    experiments = [Training(i, num_workers, opt_type) for i in range(exp_count)]
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
     all_info["sync"] = SYNC
@@ -239,8 +194,14 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     counter = 0
     itr = 0
     log = None
+    logdir_params = {"wrkr_": exp_count, "aggr": aggr_param, "sync_": SYNC}
     while time.time() - _start < 1200:
-        ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
+        if type(new_params) == list:
+            # If we want to use different type of models
+            assert len(new_params) == exp_count
+            ray.get([e.set_weights(param) for e, param in zip(experiments, new_params)])
+        else:
+            ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
         __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         
@@ -248,36 +209,34 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
         params, information = zip(*return_vals)
         stats = [(np.mean(x["results"]), np.std(x["results"])) for x in information]
         for tup in information:
-            tup["timing"]["results"] = tup["results"]
-            if log is None:
-                log = make_log({"wrkr_": exp_count, "sync_": SYNC},  tup["timing"])
-            log.writerow(tup["timing"])
             print(tup["timing_str"])
+            del tup["timing_str"]
+            if log is None:
+                fdir = generate_path(logdir_params)
+                log = make_log(fdir,  tup)
+            log.writerow(tup)
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
-
-        if np.nanmean(stats, axis=0)[0] > -15:
-            counter += 1
-        if counter > 4:
-            break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
         if itr % 5 == 0:
             print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
-        new_params = model_averaging(params)
+        new_params = aggregation(params, stats)
         itr += 1
         # new_params = best_model(params, stats)
-    fdir = "./results/e{0}w{1}_lr{2}_sync{3}/".format(exp_count, 
-                                                      num_workers,
-                                                      learning_rate,
-                                                      SYNC)
-    if opt_type == "adam":
-        fdir = fdir[:-1] + "adam/"
+    fdir = generate_path(logdir_params)
     try_makedirs(fdir)
     with open(fdir + time_string() + ".json", "w") as f:
         json.dump(all_info, f)
     return all_info
 
+def aggregation_function(val):
+    if val == "average":
+        return model_averaging
+    if val == "drop_half":
+        return drop_half
+    if val == "best":
+        return best_model 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
@@ -287,16 +246,13 @@ if __name__ == '__main__':
     parser.add_argument("--type", default="adam", type=str, help="Type of Optimizer")
     parser.add_argument("--sync", default=10, type=int, help="Sync Step")
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
+    parser.add_argument("--aggr", default="average", type=str, help="Aggregation Technique")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
     opts = parser.parse_args(sys.argv[1:])
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
-        address_info = ray.init(redirect_output=False )
-    address_info["store_socket_name"] = address_info["object_store_addresses"][0].name
-    address_info["manager_socket_name"] = address_info["object_store_addresses"][0].manager_name
-    address_info["local_scheduler_socket_name"] = address_info["local_scheduler_socket_names"][0]
-    ray.register_class(ray.services.ObjectStoreAddress)
+        address_info = ray.init(redirect_output=False, num_workers=1 )
     # addr_info_id = ray.put(address_info)
     exp_results = run_multimodel_experiment(opts.num_experiments, 
                         num_workers=opts.runners, 
@@ -304,5 +260,6 @@ if __name__ == '__main__':
                         learning_rate=opts.lr,
                         opt_type=opts.type,
                         infostr=opts.info,
+                        aggr_param=opts.aggr,
                         addr_info=address_info)
     # save_results(exp_results)
