@@ -174,7 +174,7 @@ def drop_half(params, stats):
     idx = idx.repeat(2)[len(mean):] # take the top half
     return [params[i] for i in idx]
 
-def evolution_1(param, stats):
+def evolution_1(params, stats):
     mean = [m for m, s in stats]
     idx_splt = np.split(np.argsort(mean), 2)
     top = idx_splt[1]
