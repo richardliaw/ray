@@ -217,11 +217,11 @@ def best_model(params, stats):
     print("Choosing %d..." % best)
     return params[best]
 
-def make_log(nw, timing):
-    fdir = "./results/multi_timing_%d/" % (nw)
+def make_log(params, timing):
+    fdir = "./results/" + "-".join(["%s%d" % (k, v) for k, v in params.items()])
     fname = "%s.csv" % time_string()
     try_makedirs(fdir)
-    log = DictWriter(open(fdir + fname, "w"), timing.keys())
+    log = DictWriter(open(os.path.join(fdir, fname), "w"), timing.keys())
     log.writeheader()
     return log
 
@@ -248,14 +248,15 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
         params, information = zip(*return_vals)
         stats = [(np.mean(x["results"]), np.std(x["results"])) for x in information]
         for tup in information:
+            tup["timing"]["results"] = tup["results"]
             if log is None:
-                log = make_log(num_workers, tup["timing"])
+                log = make_log({"wrkr_": exp_count, "sync_": SYNC},  tup["timing"])
             log.writerow(tup["timing"])
             print(tup["timing_str"])
         all_info["stats"].append(stats)
         all_info["TS"].append((time.time() - _start))
 
-        if np.mean(stats, axis=0)[0] > -15:
+        if np.nanmean(stats, axis=0)[0] > -15:
             counter += 1
         if counter > 4:
             break

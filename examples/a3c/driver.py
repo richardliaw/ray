@@ -116,6 +116,7 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         timing["4.Submit"].append(_endsubmit - _endget)
         timing["5.Total"].append(_endsubmit - _start)
         timing["Current"].append(_endsubmit - FULL_START)
+        timing["Results"].append(info["result"])
         if steps % 500 == 0:
             m = np.mean(results)
             print(m)
@@ -131,6 +132,7 @@ def train(num_workers, env_name="PongDeterministic-v3"):
                 try_makedirs(fdir)
                 log = DictWriter(open(fdir + fname, "w"), timing.keys())
                 log.writeheader()
+            timing['Results'] = np.concatenate(timing['Results'])
             timing = {k: np.mean(v) for k, v in timing.items()}
             print("####"*10 + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())]))
             log.writerow(timing)
