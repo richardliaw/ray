@@ -199,7 +199,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     all_info["batch"] = BATCH
     if load:
         # WEIGHTS ARE NOT LOADED WITH OPTIMIZER
-        new_params = load_weights(fname)
+        new_params = load_weights(load)
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
 
     _start = time.time()
