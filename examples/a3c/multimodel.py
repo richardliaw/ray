@@ -225,8 +225,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
         all_info["TS"].append((time.time() - _start))
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
-        if itr % 5 == 0:
-            print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
+        print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
         new_params = aggregation(params, stats)
         itr += 1
         # new_params = best_model(params, stats)
