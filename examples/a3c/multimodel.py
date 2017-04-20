@@ -170,10 +170,19 @@ def best_model(params, stats):
 
 def drop_half(params, stats):
     mean = [m for m, s in stats]
-    half = int(-len(mean) / 2)
-    idx = np.argsort(mean)[half:]
-    idx = idx.repeat(2)
+    idx = np.argsort(mean)
+    idx = idx.repeat(2)[len(mean):] # take the top half
     return [params[i] for i in idx]
+
+def evolution_1(param, stats):
+    mean = [m for m, s in stats]
+    idx_splt = np.split(np.argsort(mean), 2)
+    top = idx_splt[1]
+    bottom = np.random.choice(len(mean), size=len(idx_splt[0]))
+    idx = np.concatenate([bottom, top])
+    return [params[i] for i in idx]
+
+
 
 def generate_path(params):
     return  "./results/" + "-".join(["%s%s" % (k, str(v)) for k, v in sorted(params.items())]) + "/"
@@ -248,7 +257,9 @@ def aggregation_function(val):
     if val == "drop_half":
         return drop_half
     if val == "best":
-        return best_model 
+        return best_model
+    if val == "evo1":
+        return evolution_1 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
