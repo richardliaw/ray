@@ -117,14 +117,6 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         timing["5.Total"].append(_endsubmit - _start)
         timing["Current"].append(_endsubmit - FULL_START)
         timing["Results"].append(info["result"])
-        if steps % 500 == 0:
-            m = np.mean(results)
-            print(m)
-            results = []
-            counter += (m > -15)
-            if counter == 5:
-                log.writerow(timing)
-                return
         if steps % 200 == 0:
             if log is None:
                 fdir = "./results/timing_%d/" % (num_workers)
@@ -138,6 +130,11 @@ def train(num_workers, env_name="PongDeterministic-v3"):
             log.writerow(timing)
             
             timing = defaultdict(list)
+        if timestamp() - FULL_START > 1200:
+            timing['Results'] = np.concatenate(timing['Results'])
+            timing = {k: np.mean(v) for k, v in timing.items()}
+            log.writerow(timing)
+            break
     return policy
 
 if __name__ == '__main__':
