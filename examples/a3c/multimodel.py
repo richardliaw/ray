@@ -140,7 +140,13 @@ class Training():
         timing["node"] = self.node
         timing["mid"] = self.mid
         timing["duration"] = (timestamp(), FULLSTART)
-        return self.policy.get_weights(), timing
+        return self.get_weights_with_optimizer(), timing
+
+    def set_weights_with_optimizer(self, weights):
+        self.policy.set_weights_with_optimizer(weights)
+
+    def get_weights_with_optimizer(self):
+        return self.policy.get_weights_with_optimizer()
 
     def set_weights(self, weights):
         self.policy.set_weights(weights)
@@ -190,7 +196,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     all_info["sync"] = SYNC
     all_info["workers"] = num_workers
     all_info["batch"] = BATCH
-    new_params = ray.get(experiments[0].get_weights())
+    new_params = ray.get(experiments[0].get_weights_with_optimizer())
     counter = 0
     itr = 0
     log = None
@@ -199,9 +205,9 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
         if type(new_params) == list:
             # If we want to use different type of models
             assert len(new_params) == exp_count
-            ray.get([e.set_weights(param) for e, param in zip(experiments, new_params)])
+            ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)])
         else:
-            ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
+            ray.get([e.set_weights_with_optimizer(new_params) for i, e in enumerate(experiments)])
         __t = time.time()
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         

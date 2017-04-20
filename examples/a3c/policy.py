@@ -74,6 +74,7 @@ class Policy(object):
     def initialize(self):
         self.sess = tf.Session(graph=self.g,  config=tf.ConfigProto(intra_op_parallelism_threads=1, inter_op_parallelism_threads=2))
         self.variables = ray.experimental.TensorFlowVariables(self.loss, self.sess)
+        self.optimizer_variables = ray.experimental.TensorFlowVariables(self._apply_gradients, self.sess)
         self.sess.run(tf.global_variables_initializer())
 
     def model_update(self, grads):
@@ -87,6 +88,13 @@ class Policy(object):
 
     def set_weights(self, weights):
         self.variables.set_weights(weights)
+
+    def get_weights_with_optimizer(self):
+        weights = self.optimizer_variables.get_weights()
+        return weights
+
+    def set_weights_with_optimizer(self, weights):
+        self.optimizer_variables.set_weights(weights)
 
     def get_gradients(self, batch):
         raise NotImplementedError
