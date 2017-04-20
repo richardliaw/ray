@@ -186,16 +186,23 @@ def make_log(fdir, timing):
     return log
 
 def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
-                    sync=10, learning_rate=1e-4, infostr="", addr_info=None, aggr_param="average"):
+                    sync=10, learning_rate=1e-4, infostr="", 
+                    addr_info=None, aggr_param="average",
+                    load=""):
     aggregation = aggregation_function(aggr_param)
     SYNC = sync
-    _start = time.time()
     experiments = [Training(i, num_workers, opt_type) for i in range(exp_count)]
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
     all_info["sync"] = SYNC
     all_info["workers"] = num_workers
     all_info["batch"] = BATCH
+    if load:
+        # WEIGHTS ARE NOT LOADED WITH OPTIMIZER
+        new_params = load_weights(fname)
+        ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
+
+    _start = time.time()
     new_params = ray.get(experiments[0].get_weights_with_optimizer())
     counter = 0
     itr = 0
@@ -253,6 +260,7 @@ if __name__ == '__main__':
     parser.add_argument("--addr", default=None, type=str, help="The Redis address of the cluster.")
     parser.add_argument("--aggr", default="average", type=str, help="Aggregation Technique")
     parser.add_argument("--info", default="", type=str, help="Information for file name")
+    parser.add_argument("--load", default="", type=str, help="Load pretrained weights")
     opts = parser.parse_args(sys.argv[1:])
     if opts.addr:
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
@@ -266,5 +274,6 @@ if __name__ == '__main__':
                         opt_type=opts.type,
                         infostr=opts.info,
                         aggr_param=opts.aggr,
-                        addr_info=address_info)
+                        addr_info=address_info,
+                        load=opts.load)
     # save_results(exp_results)

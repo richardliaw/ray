@@ -3,6 +3,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ray
+import argparse
 from collections import defaultdict
 import numpy as np
 from runner import RunnerThread, process_rollout
@@ -14,7 +15,7 @@ import gym
 import sys
 import os
 from datetime import datetime, timedelta
-from misc import timestamp, time_string, try_makedirs
+from misc import timestamp, time_string, try_makedirs, load_weights, save_weights
 from envs import create_env
 
 @ray.actor
@@ -68,13 +69,18 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="PongDeterministic-v3"):
+def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
     FULL_START = timestamp()
     env = create_env(env_name)
     cfg = {"learning_rate": 1e-4, "type": "adam"}
     policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams=cfg)
     agents = [Runner(env_name, i) for i in range(num_workers)]
-    parameters = policy.get_weights()
+
+    if len(load):
+        parameters = load_weights(load)
+    else:
+        parameters = policy.get_weights()
+
     gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in agents]
     steps = 0
     obs = 0
@@ -117,6 +123,7 @@ def train(num_workers, env_name="PongDeterministic-v3"):
         timing["5.Total"].append(_endsubmit - _start)
         timing["Current"].append(_endsubmit - FULL_START)
         timing["Results"].append(info["result"])
+
         if steps % 200 == 0:
             if log is None:
                 fdir = "./results/timing_%d/" % (num_workers)
@@ -130,6 +137,12 @@ def train(num_workers, env_name="PongDeterministic-v3"):
             log.writerow(timing)
             
             timing = defaultdict(list)
+        
+        if save:
+            if timestamp() - FULL_START > 180:
+                save_weights(parameters)
+                return 
+
         if timestamp() - FULL_START > 1200:
             timing['Results'] = np.concatenate(timing['Results'])
             timing = {k: np.mean(v) for k, v in timing.items()}
@@ -138,6 +151,11 @@ def train(num_workers, env_name="PongDeterministic-v3"):
     return policy
 
 if __name__ == '__main__':
-    num_workers = int(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
+    parser.add_argument("--load", default="", type=str, help="Pretrained-policy weights")
+    parser.add_argument("--runners", default=12, type=int, help="Number of simulations")
+    parser.add_argument("--save", default=False, type=bool, help="Save intermediate results")
+    opts = parser.parse_args(sys.argv[1:])
+
     ray.init(num_workers=1 , redirect_output=True)
-    train(num_workers)
+    train(opts.runners, load=opts.load, save=opts.save)
