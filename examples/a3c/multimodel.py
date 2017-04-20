@@ -207,7 +207,7 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     counter = 0
     itr = 0
     log = None
-    logdir_params = {"wrkr_": exp_count, "aggr": aggr_param, "sync_": SYNC}
+    logdir_params = {"wrkr_": exp_count, "aggr": aggr_param, "sync_": SYNC, "load": not len(load) == 0}
     while time.time() - _start < 1200:
         if type(new_params) == list:
             # If we want to use different type of models
