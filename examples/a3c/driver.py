@@ -140,7 +140,7 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
             timing = defaultdict(list)
         
         if save:
-            if timestamp() - FULL_START > 180:
+            if timestamp() - FULL_START > 300:
                 save_weights(parameters)
                 return 
 
