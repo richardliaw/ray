@@ -20,7 +20,7 @@ BATCH = 20
 
 @ray.actor
 class Training():
-    def __init__(self, mid, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v0", log_dir="/tmp/results/"):
+    def __init__(self, mid, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v3", log_dir="/tmp/results/"):
         assert type(opt_type) == str, type(opt_type)
         try:
             os.makedirs(log_dir)
