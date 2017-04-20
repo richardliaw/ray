@@ -68,7 +68,7 @@ class Runner(object):
         return gradient, info
 
 
-def train(num_workers, env_name="PongDeterministic-v3"):
+def train(num_workers, env_name="PongDeterministic-v0"):
     FULL_START = timestamp()
     env = create_env(env_name)
     cfg = {"learning_rate": 1e-4, "type": "adam"}
