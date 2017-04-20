@@ -134,6 +134,7 @@ def train(num_workers, env_name="PongDeterministic-v3"):
             timing['Results'] = np.concatenate(timing['Results'])
             timing = {k: np.mean(v) for k, v in timing.items()}
             log.writerow(timing)
+            break
     return policy
 
 if __name__ == '__main__':
