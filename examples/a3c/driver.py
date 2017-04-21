@@ -78,6 +78,7 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
 
     if len(load):
         parameters = load_weights(load)
+        print("LOADING WEIGHTS")
     else:
         parameters = policy.get_weights()
 
@@ -127,7 +128,7 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
         if steps % 200 == 0:
             if log is None:
                 extra = "load" if load else ""
-                fdir = "./results/timing_%d%s/" % (num_workers, extra)
+                fdir = "./results/timing_%d%sfull/" % (num_workers, extra)
                 fname = "%s.csv" % time_string()
                 try_makedirs(fdir)
                 log = DictWriter(open(fdir + fname, "w"), timing.keys())
@@ -144,7 +145,7 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
                 save_weights(parameters)
                 return 
 
-        if timestamp() - FULL_START > 1200:
+        if timestamp() - FULL_START > 2400:
             timing['Results'] = np.concatenate(timing['Results'])
             timing = {k: np.mean(v) for k, v in timing.items()}
             log.writerow(timing)
