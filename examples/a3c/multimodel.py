@@ -19,18 +19,8 @@ import threading
 BATCH = 20
 
 @ray.actor
-class Training():
+class A3C():
     def __init__(self, mid, num_workers=2, opt_type="adam", learning_rate=1e-4, env_name="PongDeterministic-v3", log_dir="/tmp/results/"):
-        assert type(opt_type) == str, type(opt_type)
-        try:
-            os.makedirs(log_dir)
-        except Exception as e:
-            pass
-        self.mid = mid
-        self.env_name = env_name
-        self.log_dir = log_dir
-        self.log = None
-        self.node = ray.services.get_node_ip_address()
 
         #inline defn needed
         @ray.actor(local=True)
@@ -64,83 +54,19 @@ class Training():
                 self.runner.start_runner(self.policy.sess, summary_writer)
 
             def compute_gradient(self, params, tasksub):
-                _start = timestamp()
                 self.policy.set_weights(params)
                 rollout = self.pull_batch_from_queue()
                 batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
                 gradient = self.policy.get_gradients(batch)
-                end = timestamp()
-                info = {"id": self.id,
-                        "size": len(batch.a),
-                        "node": ray.services.get_node_ip_address(),
-                        "start_task": _start - tasksub,
-                        "end": end,
-                        "time": end - _start,
-                        "results": rollout.final }
-                return gradient, info
+                return gradient, None
+        
         ## end inline ddef
         self.agents = [Runner(env_name, i, log_dir) for i in range(int(num_workers))]
-        self.num_w = num_workers
 
         env = create_env(self.env_name)
         self.policy = LSTMPolicy(env.observation_space.shape, env.action_space.n, 0, opt_hparams={"learning_rate": learning_rate, "type": opt_type})
         if opt_type == "adam":
             assert self.policy.opt.get_name() == "Adam"
-  
-
-    def get_log_dir(self):
-        return self.log_dir
-    
-    def get_node(self):
-        return self.node
-
-    def write_results(self, timing):
-        if self.log is None:
-            print("writing row")
-        self.log.writerow(timing)
-
-    def train(self, steps_max):
-        parameters = self.policy.get_weights()
-        gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in self.agents]
-        steps = 0
-        obs = 0
-        timing = defaultdict(list)
-        training_info = {}
-        results = []
-        FULLSTART = timestamp()
-
-        while steps < steps_max:
-            _start = timestamp()
-            done_id, gradient_list = ray.wait(gradient_list)
-            gradient, info = ray.get(done_id)[0]
-            if info['results']:
-                results.extend(info['results'])
-            _getwait = timestamp()
-            self.policy.model_update(gradient)
-            _update = timestamp()
-            parameters = self.policy.get_weights()
-            _endget = timestamp()
-            steps += 1
-            obs += info["size"]
-            gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters, timestamp())])
-            _endsubmit = timestamp()
-            timing["Task"].append(info["time"])
-            timing["Task_start"].append(info["start_task"])
-            timing["Task_end"].append(_getwait - info["end"])
-            timing["1.Wait"].append(_getwait - _start)
-            timing["2.Update"].append(_update - _getwait)
-            timing["3.Weights"].append(_endget - _update)
-            timing["4.Submit"].append(_endsubmit - _endget)
-            timing["5.Total"].append(_endsubmit - _start)
-
-        timing = {k: np.mean(v) for k, v in timing.items()}
-        timing_str =  str(self.node) + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())])
-        timing["results"] = results
-        timing["timing_str"] = timing_str
-        timing["node"] = self.node
-        timing["mid"] = self.mid
-        timing["duration"] = (timestamp(), FULLSTART)
-        return self.get_weights_with_optimizer(), timing
 
     def set_weights_with_optimizer(self, weights):
         self.policy.set_weights_with_optimizer(weights)
@@ -153,6 +79,22 @@ class Training():
 
     def get_weights(self):
         return self.policy.get_weights()
+
+    def train(self, steps_max):
+        parameters = self.policy.get_weights()
+        gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in self.agents]
+        steps = 0
+        obs = 0
+
+        while steps < steps_max:
+            done_id, gradient_list = ray.wait(gradient_list)
+            gradient, info = ray.get(done_id)[0]
+            self.policy.model_update(gradient)
+            parameters = self.policy.get_weights()
+            steps += 1
+            gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters, timestamp())])
+
+        return self.get_weights_with_optimizer(), timing
 
 def model_averaging(params, stats=None):
     loader = defaultdict(list)
@@ -182,75 +124,6 @@ def evolution_1(params, stats):
     idx = np.concatenate([bottom, top])
     return [params[i] for i in idx]
 
-
-
-def generate_path(params):
-    return  "./results/" + "-".join(["%s%s" % (k, str(v)) for k, v in sorted(params.items())]) + "/"
-
-def make_log(fdir, timing):
-    fname = "%s.csv" % time_string()
-    try_makedirs(fdir)
-    log = DictWriter(open(os.path.join(fdir, fname), "w"), timing.keys())
-    log.writeheader()
-    return log
-
-def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
-                    sync=10, learning_rate=1e-4, infostr="", 
-                    addr_info=None, aggr_param="average",
-                    load=""):
-    aggregation = aggregation_function(aggr_param)
-    SYNC = sync
-    experiments = [Training(i, num_workers, opt_type) for i in range(exp_count)]
-    all_info = defaultdict(list)
-    all_info["exp_count"] = exp_count
-    all_info["sync"] = SYNC
-    all_info["workers"] = num_workers
-    all_info["batch"] = BATCH
-    if load:
-        # WEIGHTS ARE NOT LOADED WITH OPTIMIZER
-        new_params = load_weights(load)
-        ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
-
-    _start = time.time()
-    new_params = ray.get(experiments[0].get_weights_with_optimizer())
-    counter = 0
-    itr = 0
-    log = None
-    logdir_params = {"wrkr_": exp_count, "aggr": aggr_param, "sync_": SYNC, "load": not len(load) == 0}
-    while time.time() - _start < 1200:
-        if type(new_params) == list:
-            # If we want to use different type of models
-            assert len(new_params) == exp_count
-            ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)])
-        else:
-            ray.get([e.set_weights_with_optimizer(new_params) for i, e in enumerate(experiments)])
-        __t = time.time()
-        return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
-        
-        print("%d steps: %f time..." % (SYNC, time.time() - __t))
-        params, information = zip(*return_vals)
-        stats = [(np.mean(x["results"]), np.std(x["results"])) for x in information]
-        for tup in information:
-            print(tup["timing_str"])
-            del tup["timing_str"]
-            if log is None:
-                fdir = generate_path(logdir_params)
-                log = make_log(fdir,  tup)
-            log.writerow(tup)
-        all_info["stats"].append(stats)
-        all_info["TS"].append((time.time() - _start))
-        time_str = str(timedelta(seconds=time.time() - _start))
-        print("Time elapsed: " + time_str)
-        print("Model performance: \n" + "\n".join(["%d -- Mean: %.4f | Std: %.4f" % (i, m, s) for i, (m, s) in enumerate(stats)])) 
-        new_params = aggregation(params, stats)
-        itr += 1
-        # new_params = best_model(params, stats)
-    fdir = generate_path(logdir_params)
-    try_makedirs(fdir)
-    with open(fdir + time_string() + ".json", "w") as f:
-        json.dump(all_info, f)
-    return all_info
-
 def aggregation_function(val):
     if val == "average":
         return model_averaging
@@ -260,6 +133,28 @@ def aggregation_function(val):
         return best_model
     if val == "evo1":
         return evolution_1 
+
+def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
+                    sync=10, learning_rate=1e-4, infostr="", 
+                    addr_info=None, aggr_param="average",
+                    load=""):
+    aggregation = aggregation_function(aggr_param)
+    SYNC = sync
+    experiments = [A3C(i, num_workers, opt_type) for i in range(exp_count)]
+    if load: # Load prewarmed weights
+        new_params = load_weights(load)
+        ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
+
+    new_params = ray.get(experiments[0].get_weights_with_optimizer())
+    counter = 0
+    itr = 0
+    log = None
+    while time.time() - _start < 1800:
+        ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)]) # set weights on each A3C model
+        return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
+        params, information = zip(*return_vals)
+        new_params = aggregation(params, stats)
+    return params
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run the multi-model learning example.")
@@ -277,7 +172,6 @@ if __name__ == '__main__':
         address_info = ray.init(redirect_output=True, redis_address=opts.addr)
     else:
         address_info = ray.init(redirect_output=False, num_workers=1 )
-    # addr_info_id = ray.put(address_info)
     exp_results = run_multimodel_experiment(opts.num_experiments, 
                         num_workers=opts.runners, 
                         sync=opts.sync,
@@ -287,4 +181,3 @@ if __name__ == '__main__':
                         aggr_param=opts.aggr,
                         addr_info=address_info,
                         load=opts.load)
-    # save_results(exp_results)
