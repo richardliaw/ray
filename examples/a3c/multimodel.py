@@ -32,7 +32,7 @@ class A3C():
                 self.id = actor_id
                 num_actions = env.action_space.n
                 self.policy = LSTMPolicy(env.observation_space.shape, num_actions, actor_id)
-                self.runner = RunnerThread(env, self.policy, BATCH)
+                self.runner = RunnerThread(env, self.policy, BATCH) # Running simulation simultaneously
                 self.env = env
                 self.logdir = logdir
                 if start:
@@ -54,6 +54,8 @@ class A3C():
                 self.runner.start_runner(self.policy.sess, summary_writer)
 
             def compute_gradient(self, params, tasksub):
+                """Updates local copy of weights and calculates gradient on 
+                   recently generated trajectories"""
                 self.policy.set_weights(params)
                 rollout = self.pull_batch_from_queue()
                 batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
@@ -81,17 +83,23 @@ class A3C():
         return self.policy.get_weights()
 
     def train(self, steps_max):
+        """Trains model for `steps_max` iterations; returns weights"""
         parameters = self.policy.get_weights()
+        # Call gradient calculation on all simulation worker
         gradient_list = [agent.compute_gradient(parameters, timestamp()) for agent in self.agents]
         steps = 0
-        obs = 0
 
         while steps < steps_max:
+            # Get a gradient back
             done_id, gradient_list = ray.wait(gradient_list)
             gradient, info = ray.get(done_id)[0]
+            
+            # Update the global model (self.policy)
             self.policy.model_update(gradient)
             parameters = self.policy.get_weights()
             steps += 1
+            
+            # Send a copy of the global model out to the agent to compute a new gradient
             gradient_list.extend([self.agents[info["id"]].compute_gradient(parameters, timestamp())])
 
         return self.get_weights_with_optimizer(), timing
@@ -113,13 +121,16 @@ def best_model(params, stats):
 def drop_half(params, stats):
     mean = [m for m, s in stats]
     idx = np.argsort(mean)
-    idx = idx.repeat(2)[len(mean):] # take the top half
+     # take the top half and repeat it
+    idx = idx.repeat(2)[len(mean):]
     return [params[i] for i in idx]
 
 def evolution_1(params, stats):
     mean = [m for m, s in stats]
+    # split into better half and worse half
     idx_splt = np.split(np.argsort(mean), 2)
     top = idx_splt[1]
+    # replace worse half randomly
     bottom = np.random.choice(len(mean), size=len(idx_splt[0]))
     idx = np.concatenate([bottom, top])
     return [params[i] for i in idx]
@@ -138,22 +149,30 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
                     sync=10, learning_rate=1e-4, infostr="", 
                     addr_info=None, aggr_param="average",
                     load=""):
+    # Choose the aggregation function
     aggregation = aggregation_function(aggr_param)
     SYNC = sync
+    
+    # Start all A3C models
     experiments = [A3C(i, num_workers, opt_type) for i in range(exp_count)]
-    if load: # Load prewarmed weights
+    
+    # Load prewarmed weights from file onto all models
+    if load: 
         new_params = load_weights(load)
         ray.get([e.set_weights(new_params) for i, e in enumerate(experiments)])
 
+    # Get one set of optimizer + weights
     new_params = ray.get(experiments[0].get_weights_with_optimizer())
-    counter = 0
-    itr = 0
-    log = None
     _start = time.time()
+    
     while time.time() - _start < 2400: # Within 40 minutes
-        ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)]) # set weights on each A3C model
+        # set weights on each A3C model
+        ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)]) 
+        # train for SYNC steps and get parameters back
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         params, information = zip(*return_vals)
+        
+        # aggregate parameters from all models to create new parameters
         new_params = aggregation(params, stats)
     return params
 
