@@ -149,7 +149,8 @@ def run_multimodel_experiment(exp_count=1, num_workers=10, opt_type="adam",
     counter = 0
     itr = 0
     log = None
-    while time.time() - _start < 1800:
+    _start = time.time()
+    while time.time() - _start < 2400: # Within 40 minutes
         ray.get([e.set_weights_with_optimizer(param) for e, param in zip(experiments, new_params)]) # set weights on each A3C model
         return_vals = ray.get([e.train(SYNC) for i, e in enumerate(experiments)])
         params, information = zip(*return_vals)
