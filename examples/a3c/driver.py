@@ -49,23 +49,10 @@ class Runner(object):
         self.runner.start_runner(self.policy.sess, summary_writer)
 
     def compute_gradient(self, params, extra):
-        _start = timestamp()
         self.policy.set_weights(params)
         rollout = self.pull_batch_from_queue()
         batch = process_rollout(rollout, gamma=0.99, lambda_=1.0)
-        # print(np.sum(batch.a, axis=0))
         gradient = self.policy.get_gradients(batch)
-        summary = self.policy.get_summary(batch)
-        self.summary_writer.add_summary(tf.Summary.FromString(summary), self.policy.local_steps)
-        self.summary_writer.flush()
-
-        _end = timestamp()
-        info = {"id": self.id,
-                "start_task": _start - extra,
-                "time": _end -  _start,
-                "end": _end,
-                "result": rollout.final,
-                "size": len(batch.a)}
         return gradient, info
 
 
@@ -88,68 +75,17 @@ def train(num_workers, load="", save=False, env_name="PongDeterministic-v3"):
 
     counter = 0
 
-    ## DEBUG
-    timing = defaultdict(list)
-    from csv import DictWriter
-    log = None
-
     results = []
 
     while True:
-        _start = timestamp()
         done_id, gradient_list = ray.wait(gradient_list)
         gradient, info = ray.get(done_id)[0]
         results.extend(info["result"])
-        _getwait = timestamp()
         policy.model_update(gradient)
-        _update = timestamp()
         parameters = policy.get_weights()
-        #     if any([np.linalg.norm(f) < 1e-3 for k, f in zip(policy.var_list, gradient) if "bias" not in k._variable.name ]):
-        #         pass
-        #         #import ipdb; ipdb.set_trace()
-        #     print("Weights:"+" ".join(["%s: %0.7f" % (k, np.linalg.norm(f)) for k, f in parameters.items() if "action/w" in k]))
-        #     print("Grad:" + " ".join(["%s: %0.7f" % (k._variable.name , np.linalg.norm(f)) for k, f in zip(policy.var_list, gradient) if "action/w" in k._variable.name]))
-        _endget = timestamp()
-        steps += 1
-        obs += info["size"]
+
         gradient_list.extend([agents[info["id"]].compute_gradient(parameters, timestamp())])
-        _endsubmit = timestamp()
-        timing["Task"].append(info["time"])
-        timing["Task_start"].append(info["start_task"])
-        timing["Task_end"].append(_getwait - info["end"])
-        timing["1.Wait"].append(_getwait - _start)
-        timing["2.Update"].append(_update - _getwait)
-        timing["3.Weights"].append(_endget - _update)
-        timing["4.Submit"].append(_endsubmit - _endget)
-        timing["5.Total"].append(_endsubmit - _start)
-        timing["Current"].append(_endsubmit - FULL_START)
-        timing["Results"].append(info["result"])
 
-        if steps % 200 == 0:
-            if log is None:
-                extra = "load" if load else ""
-                fdir = "./results/timing_%d%sfull/" % (num_workers, extra)
-                fname = "%s.csv" % time_string()
-                try_makedirs(fdir)
-                log = DictWriter(open(fdir + fname, "w"), timing.keys())
-                log.writeheader()
-            timing['Results'] = np.concatenate(timing['Results'])
-            timing = {k: np.mean(v) for k, v in timing.items()}
-            print("####"*10 + " ".join(["%s: %f" % (k, v) for k, v in sorted(timing.items())]))
-            log.writerow(timing)
-            
-            timing = defaultdict(list)
-        
-        if save:
-            if timestamp() - FULL_START > 300:
-                save_weights(parameters)
-                return 
-
-        if timestamp() - FULL_START > 2400:
-            timing['Results'] = np.concatenate(timing['Results'])
-            timing = {k: np.mean(v) for k, v in timing.items()}
-            log.writerow(timing)
-            break
     return policy
 
 if __name__ == '__main__':
