@@ -102,7 +102,6 @@ def run_multimodel_experiment(eid, exp_count=1, num_workers=10,
             self.agents = []
             for i in range(int(num_workers)):
                 self.agents.append(Runner(env_name, id_str + "_RUNNER" + str(i), i, log_dir))
-                time.sleep(5)
     
     
         def get_log_dir(self):
@@ -203,7 +202,6 @@ def run_multimodel_experiment(eid, exp_count=1, num_workers=10,
     experiments = []
     for i in range(exp_count):
         experiments.append(Training("EXP" +str(eid) + "_MODEL" + str(i), num_workers, adam))
-        time.sleep(7)
     print("Waiting for exp to start...")
     all_info = defaultdict(list)
     all_info["exp_count"] = exp_count
@@ -228,7 +226,9 @@ def run_multimodel_experiment(eid, exp_count=1, num_workers=10,
         if np.mean(stats, axis=0)[0] > 190:
             counter += 1
         else: counter = 0
-        if counter > 4 or (time.time() - _start) > 210:
+        if ray.error_info():
+            break
+        if counter > 4 or (time.time() - _start) > 10:
             break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
@@ -262,7 +262,7 @@ def main(addr=None):
         ray.init(num_workers=1, redirect_output=True)
     all_experiments = []
     sync = 20
-    num_models = 2
+    num_models = 3
     runners = 6
     for repeat in range(3):
         for learning_rate in [10**(-x) for x in range(3, 6)]:
@@ -270,14 +270,13 @@ def main(addr=None):
                 eid = len(all_experiments)
                 all_experiments.append(run_multimodel_experiment.remote(eid, num_models, runners, sync, learning_rate))
                 print("Giving results some time to start")
-                time.sleep(5)
 
-                while len(all_experiments):
-                    print("waiting...{}".format(len(all_experiments)))
-                    print(time_string())
-                    done, all_experiments = ray.wait(all_experiments)
-                    results = ray.get(done)[0]
-                    save_results(results)
+            while len(all_experiments):
+                print("waiting...{}".format(len(all_experiments)))
+                print(time_string())
+                done, all_experiments = ray.wait(all_experiments)
+                results = ray.get(done)[0]
+#                    save_results(results)
 
 
 
