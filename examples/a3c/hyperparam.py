@@ -227,8 +227,9 @@ def run_multimodel_experiment(eid, exp_count=1, num_workers=10,
             counter += 1
         else: counter = 0
         if ray.error_info():
+            print(len(return_vals))
             break
-        if counter > 4 or (time.time() - _start) > 10:
+        if counter > 4 or (time.time() - _start) > 100:
             break
         time_str = str(timedelta(seconds=time.time() - _start))
         print("Time elapsed: " + time_str)
@@ -264,19 +265,18 @@ def main(addr=None):
     sync = 20
     num_models = 3
     runners = 6
-    for repeat in range(3):
-        for learning_rate in [10**(-x) for x in range(3, 6)]:
-            for num_models in [1, 2, 4]:
-                eid = len(all_experiments)
-                all_experiments.append(run_multimodel_experiment.remote(eid, num_models, runners, sync, learning_rate))
-                print("Giving results some time to start")
-
-            while len(all_experiments):
-                print("waiting...{}".format(len(all_experiments)))
-                print(time_string())
-                done, all_experiments = ray.wait(all_experiments)
-                results = ray.get(done)[0]
-#                    save_results(results)
+    learning_rate = 1e-5
+    for num_models in [1, 2, 4]:
+        eid = len(all_experiments)
+        all_experiments.append(run_multimodel_experiment.remote(eid, num_models, runners, sync, learning_rate))
+        print("Giving results some time to start")
+    while len(all_experiments):
+        import ipdb; ipdb.set_trace()
+        print("waiting...{}".format(len(all_experiments)))
+        print(time_string())
+        done, all_experiments = ray.wait(all_experiments)
+        results = ray.get(done)[0]
+#                save_results(results)
 
 
 
