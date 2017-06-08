@@ -83,7 +83,7 @@ script:
 
     #   - python python/ray/common/test/test.py
     #   - python python/ray/common/redis_module/runtest.py
-  - for i in {1..20}; do python python/ray/plasma/test/test.py; done
+  - for i in {1..200}; do python python/ray/plasma/test/test.py; done
     #  - python python/ray/local_scheduler/test/test.py
     #  - python python/ray/global_scheduler/test/test.py
     #
