@@ -22,8 +22,8 @@ Status DeserializeArray(std::shared_ptr<Array> array, int32_t offset, PyObject* 
   /* Mark the array as immutable. */
   PyObject* flags = PyObject_GetAttrString(*out, "flags");
   DCHECK(flags != NULL) << "Could not mark Numpy array immutable";
-  int flag_set = PyObject_SetAttrString(flags, "writeable", Py_False);
-  DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
+  // int flag_set = PyObject_SetAttrString(flags, "writeable", Py_True);
+  // DCHECK(flag_set == 0) << "Could not mark Numpy array immutable";
   Py_XDECREF(flags);
   return Status::OK();
 }

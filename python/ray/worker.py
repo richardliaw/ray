@@ -1307,8 +1307,8 @@ def connect(info, object_id_seed=None, mode=WORKER_MODE, worker=global_worker,
     if mode == WORKER_MODE:
         log_stdout_file, log_stderr_file = services.new_log_files("worker",
                                                                   True)
-        sys.stdout = log_stdout_file
-        sys.stderr = log_stderr_file
+        # sys.stdout = log_stdout_file
+        # sys.stderr = log_stderr_file
         services.record_log_files_in_redis(info["redis_address"],
                                            info["node_ip_address"],
                                            [log_stdout_file, log_stderr_file])
