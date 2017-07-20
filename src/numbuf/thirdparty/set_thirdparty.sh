@@ -13,4 +13,4 @@ fi
 cd $TP_DIR/arrow
 git pull origin master
 
-git checkout 1514016a72385f28235fc36b19274b46e25c389a
+git checkout 8a700ccdad745c250fe5d91a9104e7c2d6364c1b 
