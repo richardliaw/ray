@@ -28,7 +28,7 @@ Config = namedtuple("Config", [
 
 Result = namedtuple("Result", [
     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
-    "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count"
+    "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count", "no_noise"
 ])
 
 
@@ -100,6 +100,28 @@ class Worker(object):
     # We set eps=0 because we're incrementing only.
     task_ob_stat = utils.RunningStat(self.env.observation_space.shape, eps=0)
 
+    if np.random.uniform() < args.test_prob:
+      self.policy.set_trainable_flat(params)
+      rews_, len_ = self.rollout_and_update_ob_stat(timestep_limit,
+                                                          task_ob_stat)
+      # rews_neg, len_neg = self.rollout_and_update_ob_stat(timestep_limit,
+      #                                                     task_ob_stat)
+      # noise_inds.append(noise_idx)
+      returns.append([rews_.sum()])
+      sign_returns.append([np.sign(rews_).sum()])
+      lengths.append([len_])
+      return Result(
+          noise_inds_n=np.array(noise_inds),
+          returns_n2=np.array(returns, dtype=np.float32),
+          sign_returns_n2=np.array(sign_returns, dtype=np.float32),
+          lengths_n2=np.array(lengths, dtype=np.int32),
+          eval_return=None,
+          eval_length=None,
+          ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+          ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
+          ob_count=task_ob_stat.count,
+          no_noise=True)
+
     # Perform some rollouts with noise.
     task_tstart = time.time()
     while (len(noise_inds) == 0 or
@@ -132,7 +154,8 @@ class Worker(object):
           eval_length=None,
           ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
           ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-          ob_count=task_ob_stat.count)
+          ob_count=task_ob_stat.count,
+          no_noise=False)
 
 
 if __name__ == "__main__":
@@ -146,6 +169,8 @@ if __name__ == "__main__":
                       help="The stepsize to use.")
   parser.add_argument("--redis-address", default=None, type=str,
                       help="The Redis address of the cluster.")
+  parser.add_argument("--test-prob", default=None, type=float,
+                      help="The probability of doing a test run.")
 
   args = parser.parse_args()
   num_workers = args.num_workers
@@ -217,8 +242,18 @@ if __name__ == "__main__":
 
     curr_task_results = []
     ob_count_this_batch = 0
+
+    test_returns = []
+    test_lengths = []
+
     # Loop over the results
     for result in results:
+
+      if result.no_noise:
+        test_returns.extend(result.returns_n2)
+        test_lengths.extend(result.lengths_n2)
+        continue
+
       assert result.eval_length is None, "We aren't doing eval rollouts."
       assert result.noise_inds_n.ndim == 1
       assert result.returns_n2.shape == (len(result.noise_inds_n), 2)
@@ -235,6 +270,9 @@ if __name__ == "__main__":
       if policy.needs_ob_stat and result.ob_count > 0:
         ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
         ob_count_this_batch += result.ob_count
+
+    print("NOISELESS RETURNS:", np.mean(test_returns))
+    print("NOISELESS LENGTHS:", np.mean(test_lengths))
 
     # Assemble the results.
     noise_inds_n = np.concatenate([r.noise_inds_n for
@@ -283,12 +321,5 @@ if __name__ == "__main__":
     tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
     tlogger.record_tabular("TimeElapsed", step_tend - tstart)
     tlogger.dump_tabular()
-
-    if config.snapshot_freq != 0 and iteration % config.snapshot_freq == 0:
-        filename = os.path.join("/tmp",
-                                "snapshot_iter{:05d}.h5".format(iteration))
-        assert not os.path.exists(filename)
-        policy.save(filename)
-        tlogger.log("Saved snapshot {}".format(filename))
 
     iteration += 1
