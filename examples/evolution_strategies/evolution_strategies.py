@@ -171,6 +171,9 @@ if __name__ == "__main__":
                       help="The Redis address of the cluster.")
   parser.add_argument("--test-prob", default=None, type=float,
                       help="The probability of doing a test run.")
+  parser.add_argument("--num-episodes", default=None, type=int,
+                      help="The approximate number of episodes per update.")
+
 
   args = parser.parse_args()
   num_workers = args.num_workers
@@ -230,15 +233,25 @@ if __name__ == "__main__":
 
     # Put the current policy weights in the object store.
     theta_id = ray.put(theta)
+
+    # Divide by 2 because each one does 2.
+    num_to_wait_for = int(np.ceil(args.num_episodes / 2))
+    num_batches = int(np.ceil(args.num_episodes / 2 / len(workers)))
+
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
-    rollout_ids = [worker.do_rollouts.remote(
-        theta_id,
-        ob_stat.mean if policy.needs_ob_stat else None,
-        ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+    rollout_ids = []
+    for _ in range(num_batches):
+        rollout_ids += [worker.do_rollouts.remote(
+            theta_id,
+            ob_stat.mean if policy.needs_ob_stat else None,
+            ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
 
     # Get the results of the rollouts.
-    results = ray.get(rollout_ids)
+    print("Submitting ", num_batches, " batches of ", len(workers))
+    print("Waiting for ", num_to_wait_for)
+    ready_ids, _ = ray.wait(rollout_ids, num_returns=num_to_wait_for)
+    results = ray.get(ready_ids)
 
     curr_task_results = []
     ob_count_this_batch = 0
