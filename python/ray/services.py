@@ -386,6 +386,11 @@ def start_redis_instance(node_ip_address="127.0.0.1",
     # Configure Redis to not run in protected mode so that processes on other
     # hosts can connect to it. TODO(rkn): Do this in a more secure way.
     redis_client.config_set("protected-mode", "no")
+    try:
+        redis_client.config_set("maxclients", "65504")
+        print("Successfully increased redis client limit")
+    except:
+        print("Failed to increase redis client limit")
     # Increase the hard and soft limits for the redis client pubsub buffer to
     # 128MB. This is a hack to make it less likely for pubsub messages to be
     # dropped and for pubsub connections to therefore be killed.
