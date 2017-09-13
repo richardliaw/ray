@@ -86,6 +86,9 @@ class Worker(object):
           self.env, timestep_limit=timestep_limit, random_stream=self.rs)
     return rollout_rews, rollout_len
 
+  def no_op(self):
+    return 1
+
   def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
     # Set the network weights.
     self.policy.set_trainable_flat(params)
@@ -219,6 +222,11 @@ if __name__ == "__main__":
   optimizer = optimizers.Adam(policy, stepsize)
 
   ob_stat = utils.RunningStat(env.observation_space.shape, eps=1e-2)
+
+  # Make sure the workers have started.
+  print("Waiting for the workers to start.")
+  ray.get([worker.no_op.remote() for worker in workers])
+  print("The workers have started.")
 
   episodes_so_far = 0
   timesteps_so_far = 0
