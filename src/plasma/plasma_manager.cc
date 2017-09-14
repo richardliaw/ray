@@ -351,7 +351,7 @@ void ClientConnection_free(ClientConnection *client_conn);
 void update_timestamp(PlasmaManagerState *state) {
   int64_t new_time = current_time_ms();
   if (new_time - state->timestamp > 1000) {
-    LOG_FATAL("Too much time has passed: %lld", new_time - state->timestamp);
+    LOG_FATAL("Too much time has passed: %lld, %lld, %lld", new_time - state->timestamp, new_time, state->timestamp);
   }
   state->timestamp = new_time;
 }
@@ -551,6 +551,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
   state->timestamp = current_time_ms();
+  printf("INITIALIZED TIMESTAMP TO %lld\n", state->timestamp);
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
     UT_string *manager_address_str;
