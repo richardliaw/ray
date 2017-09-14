@@ -633,7 +633,16 @@ int write_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   s = buf->data_size + buf->metadata_size - conn->cursor;
   if (s > BUFSIZE)
     s = BUFSIZE;
+
+  int64_t time1 = current_time_ms();
+
   r = write(conn->fd, buf->data + conn->cursor, s);
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
 
   if (r != s) {
     LOG_ERROR("write failed, errno was %d", errno);
@@ -735,7 +744,16 @@ int read_object_chunk(ClientConnection *conn, PlasmaRequestBuffer *buf) {
   if (s > BUFSIZE) {
     s = BUFSIZE;
   }
+
+  int64_t time1 = current_time_ms();
+
   r = read(conn->fd, buf->data + conn->cursor, s);
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
 
   if (r == -1) {
     LOG_ERROR("read error");

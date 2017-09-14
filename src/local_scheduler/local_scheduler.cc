@@ -387,7 +387,17 @@ LocalSchedulerState *LocalSchedulerState_init(
   }
   /* Subscribe to notifications about sealed objects. */
   int plasma_fd;
+
+  int64_t time1 = current_time_ms();
+
   ARROW_CHECK_OK(state->plasma_conn->Subscribe(&plasma_fd));
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
+
   /* Add the callback that processes the notification to the event loop. */
   event_loop_add_file(loop, plasma_fd, EVENT_LOOP_READ,
                       process_plasma_notification, state);
@@ -539,8 +549,19 @@ void assign_task_to_worker(LocalSchedulerState *state,
                          fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
-  if (write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
-                    (uint8_t *) fbb.GetBufferPointer()) < 0) {
+
+  int64_t time1 = current_time_ms();
+
+  int val = write_message(worker->sock, MessageType_ExecuteTask, fbb.GetSize(),
+                    (uint8_t *) fbb.GetBufferPointer());
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
+
+  if (val < 0) {
     if (errno == EPIPE || errno == EBADF) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
@@ -606,7 +627,17 @@ void process_plasma_notification(event_loop *loop,
                                  int events) {
   LocalSchedulerState *state = (LocalSchedulerState *) context;
   /* Read the notification from Plasma. */
+
+  int64_t time1 = current_time_ms();
+
   uint8_t *notification = read_message_async(loop, client_sock);
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
+
   if (!notification) {
     /* The store has closed the socket. */
     LocalSchedulerState_free(state);
@@ -765,9 +796,19 @@ void send_client_register_reply(LocalSchedulerState *state,
       CreateRegisterClientReply(fbb, fbb.CreateVector(worker->gpus_in_use));
   fbb.Finish(message);
 
+  int64_t time1 = current_time_ms();
+
+  int val = write_message(worker->sock, MessageType_RegisterClientReply,
+                    fbb.GetSize(), fbb.GetBufferPointer());
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
+
   /* Send the message to the client. */
-  if (write_message(worker->sock, MessageType_RegisterClientReply,
-                    fbb.GetSize(), fbb.GetBufferPointer()) < 0) {
+  if (val < 0) {
     if (errno == EPIPE || errno == EBADF || errno == ECONNRESET) {
       /* Something went wrong, so kill the worker. */
       kill_worker(state, worker, false, false);
@@ -919,7 +960,17 @@ void process_message(event_loop *loop,
   LocalSchedulerState *state = worker->local_scheduler_state;
 
   int64_t type;
+
+  int64_t time1 = current_time_ms();
+
   int64_t length = read_vector(client_sock, &type, state->input_buffer);
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 1000 * 1) {
+    LOG_FATAL("XXX %lld", time2 - time1);
+  }
+
   uint8_t *input = state->input_buffer.data();
 
   LOG_DEBUG("New event of type %" PRId64, type);
