@@ -47,7 +47,7 @@ pushd "$ROOT_DIR/python/ray/core"
   else
     BOOST_ROOT=$TP_DIR/boost \
     PKG_CONFIG_PATH=$ARROW_HOME/lib/pkgconfig \
-    cmake -DCMAKE_BUILD_TYPE=Release \
+    cmake -DCMAKE_BUILD_TYPE=Debug \
           -DPYTHON_EXECUTABLE:FILEPATH=$PYTHON_EXECUTABLE \
           ../../..
   fi
@@ -57,4 +57,4 @@ popd
 
 # Move stuff from Arrow to Ray.
 
-mv $ROOT_DIR/src/thirdparty/arrow/cpp/build/release/plasma_store $ROOT_DIR/python/ray/core/src/plasma/
+mv $ROOT_DIR/src/thirdparty/arrow/cpp/build/debug/plasma_store $ROOT_DIR/python/ray/core/src/plasma/
