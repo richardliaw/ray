@@ -211,8 +211,11 @@ if __name__ == "__main__":
 
   # Create the actors.
   print("Creating actors.")
-  workers = [Worker.remote(config, policy_params, env_name, noise_id)
-             for _ in range(num_workers)]
+  workers = []
+  for i in range(num_workers):
+    workers.append(Worker.remote(config, policy_params, env_name, noise_id))
+    if i % 100 == 0:
+      print("i = ", i)
 
   env = gym.make(env_name)
   sess = utils.make_session(single_threaded=False)
