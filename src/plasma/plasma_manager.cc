@@ -351,7 +351,7 @@ void ClientConnection_free(ClientConnection *client_conn);
 
 void update_timestamp(PlasmaManagerState *state, int i) {
   int64_t new_time = current_time_ms();
-  if (new_time - g_manager_state->timestamp > 1000) {
+  if (new_time - g_manager_state->timestamp > 5000) {
     LOG_FATAL("Too much time has passed: %d, %d, %lld, %lld, %lld", g_manager_state->previous_num, i, new_time - g_manager_state->timestamp, new_time, g_manager_state->timestamp);
   }
   g_manager_state->timestamp = new_time;
