@@ -605,6 +605,8 @@ void redis_result_table_lookup(TableCallbackData *callback_data) {
 void redis_get_cached_db_client(DBHandle *db,
                                 DBClientID db_client_id,
                                 const char **manager) {
+  int64_t time1 = current_time_ms();
+
   auto it = db->db_client_cache.find(db_client_id);
 
   if (it == db->db_client_cache.end()) {
@@ -620,6 +622,12 @@ void redis_get_cached_db_client(DBHandle *db,
     *manager = addr;
   } else {
     *manager = it->second;
+  }
+
+  int64_t time2 = current_time_ms();
+
+  if (time2 - time1 > 5000) {
+    LOG_FATAL("redis_get_cached_db_client was SLOW!!! %lld %lld %lld", time1, time2, time2 - time1);
   }
 }
 
