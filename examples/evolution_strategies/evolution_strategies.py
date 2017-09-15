@@ -190,9 +190,9 @@ if __name__ == "__main__":
   @ray.remote
   def f(x):
     import time
-    time.sleep(0.0001)
+    time.sleep(0.00001)
     return x + (ray.services.get_node_ip_address(),)
-  results = ray.get([f.remote(f.remote(())) for _ in range(10000)])
+  results = ray.get([f.remote(f.remote(f.remote(f.remote(())))) for _ in range(100000)])
   print("Finished running a bunch of tasks. num unique is ", len(set(results)))
 
   config = Config(l2coeff=0.005,
