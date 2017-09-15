@@ -1325,7 +1325,7 @@ void process_fetch_requests(ClientConnection *client_conn,
 
 int wait_timeout_handler(event_loop *loop, timer_id id, void *context) {
   WaitRequest *wait_req = (WaitRequest *) context;
-  update_timestamp(wait_req->client_conn->manager_state 71);
+  update_timestamp(wait_req->client_conn->manager_state, 71);
   return_from_wait(wait_req->client_conn->manager_state, wait_req);
   update_timestamp(wait_req->client_conn->manager_state, 72);
   return EVENT_LOOP_TIMER_DONE;
@@ -1728,7 +1728,7 @@ void process_message(event_loop *loop,
     update_timestamp(conn->manager_state, 91);
   } break;
   case MessageType_PlasmaFetchRequest: {
-    update_timestamp(conn->manager_state 92);
+    update_timestamp(conn->manager_state, 92);
     LOG_DEBUG("Processing fetch remote");
     std::vector<plasma::ObjectID> object_ids_to_fetch;
     /* TODO(pcm): process_fetch_requests allocates an array of num_objects
