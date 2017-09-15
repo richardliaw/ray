@@ -186,6 +186,15 @@ if __name__ == "__main__":
   ray.init(redis_address=args.redis_address,
            num_workers=(0 if args.redis_address is None else None))
 
+  print("Running a bunch of tasks to warm up object manager connections")
+  @ray.remote
+  def f(x):
+    import time
+    time.sleep(0.0001)
+    return x + (ray.services.get_node_ip_address(),)
+  results = ray.get([f.remote(f.remote(())) for _ in range(10000)])
+  print("Finished running a bunch of tasks. num unique is ", len(set(results)))
+
   config = Config(l2coeff=0.005,
                   noise_stdev=0.02,
                   episodes_per_batch=10000,
