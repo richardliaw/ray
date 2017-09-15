@@ -1223,7 +1223,7 @@ void call_request_transfer(ObjectID object_id,
   HASH_ADD(hh, manager_state->fetch_requests, object_id,
            sizeof(fetch_req->object_id), fetch_req);
   request_transfer(object_id, manager_count, manager_vector, context);
-  update_timestamp(manager_state 64);
+  update_timestamp(manager_state, 64);
 
 }
 
