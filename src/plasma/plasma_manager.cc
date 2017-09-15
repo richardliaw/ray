@@ -255,6 +255,7 @@ struct PlasmaManagerState {
    *  heartbeat was sent. */
   int64_t previous_heartbeat_time;
   int64_t timestamp;
+  int previous_num;
 };
 
 PlasmaManagerState *g_manager_state = NULL;
@@ -351,9 +352,10 @@ void ClientConnection_free(ClientConnection *client_conn);
 void update_timestamp(PlasmaManagerState *state, int i) {
   int64_t new_time = current_time_ms();
   if (new_time - g_manager_state->timestamp > 1000) {
-    LOG_FATAL("Too much time has passed: %d, %lld, %lld, %lld", i, new_time - g_manager_state->timestamp, new_time, g_manager_state->timestamp);
+    LOG_FATAL("Too much time has passed: %d, %d, %lld, %lld, %lld", g_manager_state->previous_num, i, new_time - g_manager_state->timestamp, new_time, g_manager_state->timestamp);
   }
   g_manager_state->timestamp = new_time;
+  g_manager_state->previous_num = i;
 }
 
 void object_table_subscribe_callback(ObjectID object_id,
@@ -551,6 +553,7 @@ PlasmaManagerState *PlasmaManagerState_init(const char *store_socket_name,
   state->object_wait_requests_local = NULL;
   state->object_wait_requests_remote = NULL;
   state->timestamp = current_time_ms();
+  state->previous_num = -1;
   printf("INITIALIZED TIMESTAMP TO %lld\n", state->timestamp);
   if (redis_primary_addr) {
     /* Get the manager port as a string. */
