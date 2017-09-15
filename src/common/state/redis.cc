@@ -626,6 +626,7 @@ void redis_get_cached_db_client(DBHandle *db,
 
   int64_t time2 = current_time_ms();
 
+  LOG_INFO("XXX %lld", (time2 - time1));
   if (time2 - time1 > 5000) {
     LOG_FATAL("redis_get_cached_db_client was SLOW!!! %lld %lld %lld", time1, time2, time2 - time1);
   }
@@ -654,11 +655,21 @@ void redis_object_table_lookup_callback(redisAsyncContext *c,
       managers = (DBClientID *) malloc(reply->elements * sizeof(DBClientID));
       manager_vector = (const char **) malloc(manager_count * sizeof(char *));
     }
+
+    int64_t time1 = current_time_ms();
+
     for (int j = 0; j < reply->elements; ++j) {
       CHECK(reply->element[j]->type == REDIS_REPLY_STRING);
       memcpy(managers[j].id, reply->element[j]->str, sizeof(managers[j].id));
       redis_get_cached_db_client(db, managers[j], manager_vector + j);
     }
+
+    int64_t time2 = current_time_ms();
+
+    if (time2 - time1 > 5000) {
+      LOG_FATAL("YYY redis_object_table_lookup_callback was SLOW!!! %lld %lld %lld %d", time1, time2, time2 - time1, reply->elements);
+    }
+
   } else {
     LOG_FATAL("Unexpected reply type from object table lookup.");
   }
@@ -715,9 +726,18 @@ void object_table_redis_subscribe_to_notifications_callback(
     /* Construct the manager vector from the flatbuffers object. */
     const char **manager_vector =
         (const char **) malloc(manager_count * sizeof(char *));
+
+    int64_t time1 = current_time_ms();
+
     for (int i = 0; i < manager_count; ++i) {
       DBClientID manager_id = from_flatbuf(message->manager_ids()->Get(i));
       redis_get_cached_db_client(db, manager_id, &manager_vector[i]);
+    }
+
+    int64_t time2 = current_time_ms();
+
+    if (time2 - time1 > 5000) {
+      LOG_FATAL("ZZZ redis_object_table_lookup_callback was SLOW!!! %lld %lld %lld %d", time1, time2, time2 - time1, manager_count);
     }
 
     /* Call the subscribe callback. */
