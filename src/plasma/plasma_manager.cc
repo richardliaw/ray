@@ -350,10 +350,10 @@ void ClientConnection_free(ClientConnection *client_conn);
 
 void update_timestamp(PlasmaManagerState *state, int i) {
   int64_t new_time = current_time_ms();
-  if (new_time - state->timestamp > 1000) {
-    LOG_FATAL("Too much time has passed: %d, %lld, %lld, %lld", i, new_time - state->timestamp, new_time, state->timestamp);
+  if (new_time - g_manager_state->timestamp > 1000) {
+    LOG_FATAL("Too much time has passed: %d, %lld, %lld, %lld", i, new_time - g_manager_state->timestamp, new_time, g_manager_state->timestamp);
   }
-  state->timestamp = new_time;
+  g_manager_state->timestamp = new_time;
 }
 
 void object_table_subscribe_callback(ObjectID object_id,
@@ -1763,7 +1763,6 @@ void process_message(event_loop *loop,
     LOG_INFO("Disconnecting client on fd %d", client_sock);
     event_loop_remove_file(loop, client_sock);
     ClientConnection_free(conn);
-    update_timestamp(conn->manager_state, 99);
   } break;
   default:
     LOG_FATAL("invalid request %" PRId64, type);
