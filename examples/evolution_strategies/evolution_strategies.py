@@ -188,10 +188,6 @@ if __name__ == "__main__":
   env_name = args.env_name
   stepsize = args.stepsize
 
-  import time
-  filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
-  results_file = open(filename, 'wb')
-
   ray.init(redis_address=args.redis_address,
            num_workers=(0 if args.redis_address is None else None))
 
@@ -401,9 +397,12 @@ if __name__ == "__main__":
     })
 
     if np.mean(test_returns) >= 6000:
+      filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
       print("\n\nBreaking and storing results in ", filename, "\n\n")
       break
 
     iteration += 1
 
+import time
+results_file = open(filename, 'wb')
 pickle.dump(result_info, results_file)
