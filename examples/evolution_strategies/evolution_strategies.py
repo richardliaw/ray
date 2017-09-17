@@ -10,6 +10,7 @@ from collections import namedtuple
 import gym
 import numpy as np
 import os
+import pickle
 import ray
 import time
 
@@ -176,6 +177,8 @@ if __name__ == "__main__":
                       help="The probability of doing a test run.")
   parser.add_argument("--num-episodes", default=None, type=int,
                       help="The approximate number of episodes per update.")
+  parser.add_argument("--warmup", default=0, type=int,
+                      help="Warm up the plasma manager connections.")
 
 
   args = parser.parse_args()
@@ -183,17 +186,24 @@ if __name__ == "__main__":
   env_name = args.env_name
   stepsize = args.stepsize
 
+  import time
+  filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
+  results_file = open(filename, 'wb')
+
   ray.init(redis_address=args.redis_address,
            num_workers=(0 if args.redis_address is None else None))
 
-  print("Running a bunch of tasks to warm up object manager connections")
-  @ray.remote
-  def f(x):
-    import time
-    time.sleep(0.00001)
-    return x + (ray.services.get_node_ip_address(),)
-  results = ray.get([f.remote(f.remote(f.remote(f.remote(())))) for _ in range(100000)])
-  print("Finished running a bunch of tasks. num unique is ", len(set(results)))
+  if args.warmup == 1:
+    print("Running a bunch of tasks to warm up object manager connections")
+    @ray.remote
+    def f(x):
+      import time
+      time.sleep(0.00001)
+      return x + (ray.services.get_node_ip_address(),)
+    ray.wait([f.remote(f.remote(f.remote(f.remote(())))) for _ in range(100000)], num_returns=100000)
+    print("Finished running a bunch of tasks")
+  else:
+    print("Not warming up the object manager connections")
 
   config = Config(l2coeff=0.005,
                   noise_stdev=0.02,
@@ -245,6 +255,8 @@ if __name__ == "__main__":
   tstart = time.time()
 
   iteration = 0
+
+  result_info = []
 
   while True:
     step_tstart = time.time()
@@ -355,4 +367,19 @@ if __name__ == "__main__":
     tlogger.record_tabular("TimeElapsed", step_tend - tstart)
     tlogger.dump_tabular()
 
+    result_info.append({
+        "iteration": iteration,
+        "noiseless returns": np.mean(test_returns),
+        "noiseless lengths": np.mean(test_lengths),
+        "timestamp": time.time(),
+        "noisy returns": returns_n2.mean(),
+        "noisy lengths": lengths_n2.mean()
+    })
+
+    if np.mean(test_returns) >= 6000:
+      print("\n\nBreaking and storing results in ", filename, "\n\n")
+      break
+
     iteration += 1
+
+pickle.dump(result_info, results_file)
