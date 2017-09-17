@@ -200,22 +200,22 @@ if __name__ == "__main__":
     @ray.remote(num_gpus=1)
     def f():
       import time
-      time.sleep(0.01)
+      time.sleep(0.004)
       return 1
 
     @ray.remote(num_gpus=1)
     def g(x):
       import time
-      time.sleep(0.01)
+      time.sleep(0.004)
       return 1
 
     # These objects will be distributed around the cluster.
-    ids = [f.remote() for _ in range(1000)]
+    ids = [f.remote() for _ in range(101)]
 
     i = 0
     for obj_id in ids:
       print(i)
-      ray.get([g.remote(obj_id) for _ in range(400)])
+      ray.get([g.remote(obj_id) for _ in range(101)])
       i += 1
 
     print("Finished running a bunch of tasks")
