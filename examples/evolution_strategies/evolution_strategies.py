@@ -208,12 +208,12 @@ if __name__ == "__main__":
       return 1
 
     # These objects will be distributed around the cluster.
-    ids = [f.remote() for _ in range(101)]
+    ids = [f.remote() for _ in range(201)]
 
     i = 0
     for obj_id in ids:
       print(i)
-      ray.get([g.remote(obj_id) for _ in range(101)])
+      ray.get([g.remote(obj_id) for _ in range(201)])
       i += 1
 
     print("Finished running a bunch of tasks")
