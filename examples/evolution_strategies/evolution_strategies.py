@@ -204,7 +204,7 @@ if __name__ == "__main__":
       return 1
 
     @ray.remote(num_gpus=1)
-    def g():
+    def g(x):
       import time
       time.sleep(0.01)
       return 1
