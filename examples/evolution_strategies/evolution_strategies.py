@@ -267,6 +267,11 @@ if __name__ == "__main__":
   ray.get([worker.no_op.remote() for worker in workers])
   print("The workers have started.")
 
+  if args.warmup == 1:
+    print("Sleeping for one min")
+    time.sleep(60)
+    print("Finished sleeping")
+
   episodes_so_far = 0
   timesteps_so_far = 0
   tstart = time.time()
