@@ -194,13 +194,30 @@ if __name__ == "__main__":
            num_workers=(0 if args.redis_address is None else None))
 
   if args.warmup == 1:
+    # For this to work, start each machine with 1 GPU.
     print("Running a bunch of tasks to warm up object manager connections")
-    @ray.remote
-    def f(x):
+
+    @ray.remote(num_gpus=1)
+    def f():
       import time
-      time.sleep(0.00001)
-      return x + (ray.services.get_node_ip_address(),)
-    ray.wait([f.remote(f.remote(f.remote(f.remote(())))) for _ in range(100000)], num_returns=100000)
+      time.sleep(0.01)
+      return 1
+
+    @ray.remote(num_gpus=1)
+    def g():
+      import time
+      time.sleep(0.01)
+      return 1
+
+    # These objects will be distributed around the cluster.
+    ids = [f.remote() for _ in range(1000)]
+
+    i = 0
+    for obj_id in ids:
+      print(i)
+      ray.get([g.remote(obj_id) for _ in range(400)])
+      i += 1
+
     print("Finished running a bunch of tasks")
   else:
     print("Not warming up the object manager connections")
