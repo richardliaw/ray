@@ -626,7 +626,7 @@ void redis_get_cached_db_client(DBHandle *db,
 
   int64_t time2 = current_time_ms();
 
-  LOG_INFO("XXX %lld", (time2 - time1));
+  //LOG_INFO("XXX %lld", (time2 - time1));
   if (time2 - time1 > 5000) {
     LOG_FATAL("redis_get_cached_db_client was SLOW!!! %lld %lld %lld", time1, time2, time2 - time1);
   }
