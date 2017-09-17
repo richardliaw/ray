@@ -27,10 +27,10 @@ Config = namedtuple("Config", [
     "episode_cutoff_mode"
 ])
 
-Result = namedtuple("Result", [
-    "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
-    "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count", "no_noise"
-])
+# Result = namedtuple("Result", [
+#     "noise_inds_n", "returns_n2", "sign_returns_n2", "lengths_n2",
+#     "eval_return", "eval_length", "ob_sum", "ob_sumsq", "ob_count", "no_noise"
+# ])
 
 
 @ray.remote
@@ -114,17 +114,18 @@ class Worker(object):
       returns.append([rews_.sum()])
       sign_returns.append([np.sign(rews_).sum()])
       lengths.append([len_])
-      return Result(
-          noise_inds_n=np.array(noise_inds),
-          returns_n2=np.array(returns, dtype=np.float32),
-          sign_returns_n2=np.array(sign_returns, dtype=np.float32),
-          lengths_n2=np.array(lengths, dtype=np.int32),
-          eval_return=None,
-          eval_length=None,
-          ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-          ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-          ob_count=task_ob_stat.count,
-          no_noise=True)
+      return {
+          "noise_inds_n":np.array(noise_inds),
+          "returns_n2":np.array(returns, dtype=np.float32),
+          "sign_returns_n2":np.array(sign_returns, dtype=np.float32),
+          "lengths_n2":np.array(lengths, dtype=np.int32),
+          "eval_return":None,
+          "eval_length":None,
+          "ob_sum":(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+          "ob_sumsq":(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
+          "ob_count":task_ob_stat.count,
+          "no_noise":True
+          }
 
     # Perform some rollouts with noise.
     task_tstart = time.time()
@@ -149,17 +150,18 @@ class Worker(object):
       sign_returns.append([np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
       lengths.append([len_pos, len_neg])
 
-      return Result(
-          noise_inds_n=np.array(noise_inds),
-          returns_n2=np.array(returns, dtype=np.float32),
-          sign_returns_n2=np.array(sign_returns, dtype=np.float32),
-          lengths_n2=np.array(lengths, dtype=np.int32),
-          eval_return=None,
-          eval_length=None,
-          ob_sum=(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-          ob_sumsq=(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-          ob_count=task_ob_stat.count,
-          no_noise=False)
+      return {
+          "noise_inds_n":np.array(noise_inds),
+          "returns_n2":np.array(returns, dtype=np.float32),
+          "sign_returns_n2":np.array(sign_returns, dtype=np.float32),
+          "lengths_n2":np.array(lengths, dtype=np.int32),
+          "eval_return":None,
+          "eval_length":None,
+          "ob_sum":(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+          "ob_sumsq":(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
+          "ob_count":task_ob_stat.count,
+          "no_noise":False
+          }
 
 
 if __name__ == "__main__":
@@ -316,36 +318,36 @@ if __name__ == "__main__":
     # Loop over the results
     for result in results:
 
-      if result.no_noise:
-        test_returns.extend(result.returns_n2)
-        test_lengths.extend(result.lengths_n2)
+      if result['no_noise']:
+        test_returns.extend(result['returns_n2'])
+        test_lengths.extend(result['lengths_n2'])
         continue
 
-      assert result.eval_length is None, "We aren't doing eval rollouts."
-      assert result.noise_inds_n.ndim == 1
-      assert result.returns_n2.shape == (len(result.noise_inds_n), 2)
-      assert result.lengths_n2.shape == (len(result.noise_inds_n), 2)
-      assert result.returns_n2.dtype == np.float32
+      assert result['eval_length'] is None, "We aren't doing eval rollouts."
+      assert result['noise_inds_n'].ndim == 1
+      assert result['returns_n2'].shape == (len(result['noise_inds_n']), 2)
+      assert result['lengths_n2'].shape == (len(result['noise_inds_n']), 2)
+      assert result['returns_n2'].dtype == np.float32
 
-      result_num_eps = result.lengths_n2.size
-      result_num_timesteps = result.lengths_n2.sum()
+      result_num_eps = result['lengths_n2'].size
+      result_num_timesteps = result['lengths_n2'].sum()
       episodes_so_far += result_num_eps
       timesteps_so_far += result_num_timesteps
 
       curr_task_results.append(result)
       # Update ob stats.
-      if policy.needs_ob_stat and result.ob_count > 0:
-        ob_stat.increment(result.ob_sum, result.ob_sumsq, result.ob_count)
-        ob_count_this_batch += result.ob_count
+      if policy.needs_ob_stat and result['ob_count'] > 0:
+        ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
+        ob_count_this_batch += result['ob_count']
 
     print("NOISELESS RETURNS:", np.mean(test_returns))
     print("NOISELESS LENGTHS:", np.mean(test_lengths))
 
     # Assemble the results.
-    noise_inds_n = np.concatenate([r.noise_inds_n for
+    noise_inds_n = np.concatenate([r['noise_inds_n'] for
                                    r in curr_task_results])
-    returns_n2 = np.concatenate([r.returns_n2 for r in curr_task_results])
-    lengths_n2 = np.concatenate([r.lengths_n2 for r in curr_task_results])
+    returns_n2 = np.concatenate([r['returns_n2'] for r in curr_task_results])
+    lengths_n2 = np.concatenate([r['lengths_n2'] for r in curr_task_results])
     assert noise_inds_n.shape[0] == returns_n2.shape[0] == lengths_n2.shape[0]
     # Process the returns.
     if config.return_proc_mode == "centered_rank":
