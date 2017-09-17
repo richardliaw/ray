@@ -136,6 +136,8 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
     return success
 
 
+counter = 0
+
 def select_local_scheduler(driver_id, local_schedulers, num_gpus,
                            redis_client):
     """Select a local scheduler to assign this actor to.
@@ -155,32 +157,37 @@ def select_local_scheduler(driver_id, local_schedulers, num_gpus,
         Exception: An exception is raised if no local scheduler can be found
             with sufficient resources.
     """
-    local_scheduler_id = None
-    # Loop through all of the local schedulers in a random order.
-    local_schedulers = np.random.permutation(local_schedulers)
-    for local_scheduler in local_schedulers:
-        if local_scheduler["NumCPUs"] < 1:
-            continue
-        if local_scheduler["NumGPUs"] < num_gpus:
-            continue
-        if num_gpus == 0:
-            local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
-            break
-        else:
-            # Try to reserve enough GPUs on this local scheduler.
-            success = attempt_to_reserve_gpus(num_gpus, driver_id,
-                                              local_scheduler, redis_client)
-            if success:
-                local_scheduler_id = hex_to_binary(
-                                         local_scheduler["DBClientID"])
-                break
+    # local_scheduler_id = None
+    # # Loop through all of the local schedulers in a random order.
 
-    if local_scheduler_id is None:
-        raise Exception("Could not find a node with enough GPUs or other "
-                        "resources to create this actor. The local scheduler "
-                        "information is {}.".format(local_schedulers))
+    global counter
+    counter += 1
+    return hex_to_binary(local_schedulers[counter % len(local_schedulers)]["DBClientID"])
 
-    return local_scheduler_id
+    # local_schedulers = np.random.permutation(local_schedulers)
+    # for local_scheduler in local_schedulers:
+    #     if local_scheduler["NumCPUs"] < 1:
+    #         continue
+    #     if local_scheduler["NumGPUs"] < num_gpus:
+    #         continue
+    #     if num_gpus == 0:
+    #         local_scheduler_id = hex_to_binary(local_scheduler["DBClientID"])
+    #         break
+    #     else:
+    #         # Try to reserve enough GPUs on this local scheduler.
+    #         success = attempt_to_reserve_gpus(num_gpus, driver_id,
+    #                                           local_scheduler, redis_client)
+    #         if success:
+    #             local_scheduler_id = hex_to_binary(
+    #                                      local_scheduler["DBClientID"])
+    #             break
+    #
+    # if local_scheduler_id is None:
+    #     raise Exception("Could not find a node with enough GPUs or other "
+    #                     "resources to create this actor. The local scheduler "
+    #                     "information is {}.".format(local_schedulers))
+    #
+    # return local_scheduler_id
 
 
 def publish_actor_creation(actor_id, driver_id, local_scheduler_id,
