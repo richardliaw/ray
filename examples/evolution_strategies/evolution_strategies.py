@@ -415,7 +415,13 @@ if __name__ == "__main__":
         "noiseless lengths": np.mean(test_lengths),
         "timestamp": time.time(),
         "noisy returns": returns_n2.mean(),
-        "noisy lengths": lengths_n2.mean()
+        "noisy lengths": lengths_n2.mean(),
+        "Submitting": xxxt2 - xxxt1,
+        "Waiting": xxxt3 - xxxt2,
+        "Getting": xxxt4 - xxxt3,
+        "Parsing": xxxt5 - xxxt4,
+        "Summing": xxxt6 - xxxt5,
+        "Updating": xxxt7 - xxxt6
     })
 
     iteration += 1
