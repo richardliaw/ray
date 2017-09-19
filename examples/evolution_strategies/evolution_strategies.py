@@ -246,12 +246,15 @@ if __name__ == "__main__":
   # Create the actors.
   print("Creating actors.")
   workers = []
+  worker_create_time1 = time.time()
   prev_time = time.time()
   for i in range(num_workers):
     workers.append(Worker.remote(config, policy_params, env_name, noise_id))
     if i % 100 == 0:
       print("i = ", i, time.time() - prev_time)
       prev_time = time.time()
+  worker_create_time2 = time.time()
+  print("total actor submission time ", worker_create_time2 - worker_create_time1)
 
   env = gym.make(env_name)
   sess = utils.make_session(single_threaded=False)
@@ -295,17 +298,21 @@ if __name__ == "__main__":
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
     rollout_ids = []
+    xxxt1 = time.time()
     for _ in range(num_batches):
         rollout_ids += [worker.do_rollouts.remote(
             theta_id,
             ob_stat.mean if policy.needs_ob_stat else None,
             ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+    xxxt2 = time.time()
 
     # Get the results of the rollouts.
     print("Submitting ", num_batches, " batches of ", len(workers))
     print("Waiting for ", num_to_wait_for)
     ready_ids, _ = ray.wait(rollout_ids, num_returns=num_to_wait_for)
+    xxxt3 = time.time()
     results = ray.get(ready_ids)
+    xxxt4 = time.time()
 
     curr_task_results = []
     ob_count_this_batch = 0
@@ -363,6 +370,13 @@ if __name__ == "__main__":
             count == len(noise_inds_n))
     update_ratio = optimizer.update(-g + config.l2coeff * theta)
 
+    xxxt5 = time.time()
+
+    print("Submitting: ", xxxt2 - xxxt1)
+    print("Waiting: ", xxxt3 - xxxt2)
+    print("Getting: ", xxxt4 - xxxt3)
+    print("Updating: ", xxxt5 - xxxt4)
+
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
     if policy.needs_ob_stat:
@@ -398,12 +412,13 @@ if __name__ == "__main__":
         "noisy lengths": lengths_n2.mean()
     })
 
+    iteration += 1
+    print("iteration ", iteration)
+
     if np.mean(test_returns) >= 6000:
       filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
       print("\n\nBreaking and storing results in ", filename, "\n\n")
       break
-
-    iteration += 1
 
 import time
 results_file = open(filename, 'wb')
