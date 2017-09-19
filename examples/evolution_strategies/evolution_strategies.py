@@ -246,10 +246,12 @@ if __name__ == "__main__":
   # Create the actors.
   print("Creating actors.")
   workers = []
+  prev_time = time.time()
   for i in range(num_workers):
     workers.append(Worker.remote(config, policy_params, env_name, noise_id))
     if i % 100 == 0:
-      print("i = ", i)
+      print("i = ", i, time.time() - prev_time)
+      prev_time = time.time()
 
   env = gym.make(env_name)
   sess = utils.make_session(single_threaded=False)
@@ -266,8 +268,8 @@ if __name__ == "__main__":
   print("The workers have started.")
 
   if args.warmup == 1:
-    print("Sleeping for one min")
-    time.sleep(60)
+    print("Sleeping for 5s")
+    time.sleep(5)
     print("Finished sleeping")
 
   episodes_so_far = 0
