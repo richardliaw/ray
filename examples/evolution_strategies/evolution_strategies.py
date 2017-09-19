@@ -361,21 +361,27 @@ if __name__ == "__main__":
       raise NotImplementedError(config.return_proc_mode)
 
     # Compute and take a step.
+    xxxt5 = time.time()
     g, count = utils.batched_weighted_sum(
         proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
         (noise.get(idx, policy.num_params) for idx in noise_inds_n),
         batch_size=500)
+
+    xxxt6 = time.time()
+
     g /= returns_n2.size
     assert (g.shape == (policy.num_params,) and g.dtype == np.float32 and
             count == len(noise_inds_n))
     update_ratio = optimizer.update(-g + config.l2coeff * theta)
 
-    xxxt5 = time.time()
+    xxxt7 = time.time()
 
     print("Submitting: ", xxxt2 - xxxt1)
     print("Waiting: ", xxxt3 - xxxt2)
     print("Getting: ", xxxt4 - xxxt3)
-    print("Updating: ", xxxt5 - xxxt4)
+    print("Parsing: ", xxxt5 - xxxt4)
+    print("Summing: ", xxxt6 - xxxt5)
+    print("Updating: ", xxxt7 - xxxt6)
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
