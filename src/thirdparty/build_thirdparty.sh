@@ -53,7 +53,7 @@ ARROW_HOME=$TP_DIR/arrow/cpp/build/cpp-install
 
 BOOST_ROOT=$TP_DIR/boost \
 FLATBUFFERS_HOME=$FLATBUFFERS_HOME \
-cmake -DCMAKE_BUILD_TYPE=Debug \
+cmake -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_C_FLAGS="-g -O3" \
       -DCMAKE_CXX_FLAGS="-g -O3" \
       -DCMAKE_INSTALL_PREFIX=$ARROW_HOME \
