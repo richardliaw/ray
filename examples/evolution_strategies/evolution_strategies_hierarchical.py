@@ -452,14 +452,14 @@ if __name__ == "__main__":
 
     results_and_grads = ray.get(results_and_grad_ids)
 
-    noiseless_score = 0
-    noiseless_length = 0
+    total_noiseless_score = 0
+    total_noiseless_length = 0
     total_num_noiseless = 0
     total_grad = np.zeros_like(theta)
     total_returns = 0
     for num_noiseless, noiseless_score, noiseless_length, grad, num_returns, obstat_info in results_and_grads:
-        noiseless_score += noiseless_score * num_noiseless
-        noiseless_length += noiseless_length * num_noiseless
+        total_noiseless_score += noiseless_score * num_noiseless
+        total_noiseless_length += noiseless_length * num_noiseless
         total_num_noiseless += num_noiseless
 
         total_grad += grad
@@ -475,11 +475,11 @@ if __name__ == "__main__":
     #         count == len(noise_inds_n))
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
 
-    noiseless_score /= total_num_noiseless
-    noiseless_length /= total_num_noiseless
+    total_noiseless_score /= total_num_noiseless
+    total_noiseless_length /= total_num_noiseless
 
-    print("NOISELESS SCORE: ", noiseless_score)
-    print("NOISELESS LENGTH: ", noiseless_length)
+    print("NOISELESS SCORE: ", total_noiseless_score)
+    print("NOISELESS LENGTH: ", total_noiseless_length)
 
 
     #ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
