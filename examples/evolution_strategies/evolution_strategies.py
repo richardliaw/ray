@@ -59,6 +59,10 @@ class Worker(object):
   def __init__(self, config, policy_params, env_name, noise,
                min_task_runtime=0.2):
     self.min_task_runtime = min_task_runtime
+
+    # if 'time_per_batch' in config and 'episodes_per_batch' in config:
+    #   raise Exception("Cannot use both time_per_batch and episodes_per_batch")
+
     self.config = config
     self.policy_params = policy_params
     self.noise = SharedNoiseTable(noise)
@@ -150,18 +154,18 @@ class Worker(object):
       sign_returns.append([np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
       lengths.append([len_pos, len_neg])
 
-      return {
-          "noise_inds_n":np.array(noise_inds),
-          "returns_n2":np.array(returns, dtype=np.float32),
-          "sign_returns_n2":np.array(sign_returns, dtype=np.float32),
-          "lengths_n2":np.array(lengths, dtype=np.int32),
-          "eval_return":None,
-          "eval_length":None,
-          "ob_sum":(None if task_ob_stat.count == 0 else task_ob_stat.sum),
-          "ob_sumsq":(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
-          "ob_count":task_ob_stat.count,
-          "no_noise":False
-          }
+    return {
+      "noise_inds_n":np.array(noise_inds),
+      "returns_n2":np.array(returns, dtype=np.float32),
+      "sign_returns_n2":np.array(sign_returns, dtype=np.float32),
+      "lengths_n2":np.array(lengths, dtype=np.int32),
+      "eval_return":None,
+      "eval_length":None,
+      "ob_sum":(None if task_ob_stat.count == 0 else task_ob_stat.sum),
+      "ob_sumsq":(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
+      "ob_count":task_ob_stat.count,
+      "no_noise":False
+      }
 
 
 if __name__ == "__main__":
@@ -177,8 +181,12 @@ if __name__ == "__main__":
                       help="The Redis address of the cluster.")
   parser.add_argument("--test-prob", default=None, type=float,
                       help="The probability of doing a test run.")
-  parser.add_argument("--num-episodes", default=None, type=int,
+  parser.add_argument("--num-episodes", default=0, type=int,
                       help="The approximate number of episodes per update.")
+  parser.add_argument("--num-timesteps", default=0, type=int,
+                      help="The approximate number of episodes per update.")
+  parser.add_argument("--min-task-runtime", default=0.2, type=int,
+                      help="The minimum time per batch.")
   parser.add_argument("--warmup", default=0, type=int,
                       help="Warm up the plasma manager connections.")
 
@@ -222,8 +230,9 @@ if __name__ == "__main__":
 
   config = Config(l2coeff=0.005,
                   noise_stdev=0.02,
-                  episodes_per_batch=10000,
-                  timesteps_per_batch=100000,
+                  episodes_per_batch=args.num_episodes,
+                  #time_per_batch=args.time_per_batch,
+                  timesteps_per_batch=args.num_timesteps,
                   calc_obstat_prob=0.01,
                   eval_prob=0,
                   snapshot_freq=20,
@@ -249,7 +258,8 @@ if __name__ == "__main__":
   worker_create_time1 = time.time()
   prev_time = time.time()
   for i in range(num_workers):
-    workers.append(Worker.remote(config, policy_params, env_name, noise_id))
+    workers.append(Worker.remote(config, policy_params, env_name, noise_id,
+                                 min_task_runtime=args.min_task_runtime))
     if i % 100 == 0:
       print("i = ", i, time.time() - prev_time)
       prev_time = time.time()
@@ -292,26 +302,33 @@ if __name__ == "__main__":
     theta_id = ray.put(theta)
 
     # Divide by 2 because each one does 2.
-    num_to_wait_for = int(np.ceil(args.num_episodes / 2))
-    num_batches = int(np.ceil(args.num_episodes / 2 / len(workers)))
+    # num_to_wait_for = int(np.ceil(args.num_episodes / 2))
+    # num_batches = int(np.ceil(args.num_episodes / 2 / len(workers)))
 
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
-    rollout_ids = []
+    # rollout_ids = []
     xxxt1 = time.time()
-    for _ in range(num_batches):
-        rollout_ids += [worker.do_rollouts.remote(
-            theta_id,
-            ob_stat.mean if policy.needs_ob_stat else None,
-            ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+
+    rollout_ids = [worker.do_rollouts.remote(
+             theta_id,
+             ob_stat.mean if policy.needs_ob_stat else None,
+             ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+
+    # for _ in range(num_batches):
+    #     rollout_ids += [worker.do_rollouts.remote(
+    #         theta_id,
+    #         ob_stat.mean if policy.needs_ob_stat else None,
+    #         ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
     xxxt2 = time.time()
 
     # Get the results of the rollouts.
-    print("Submitting ", num_batches, " batches of ", len(workers))
-    print("Waiting for ", num_to_wait_for)
-    ready_ids, _ = ray.wait(rollout_ids, num_returns=num_to_wait_for)
+    #print("Submitting ", num_batches, " batches of ", len(workers))
+    #print("Waiting for ", num_to_wait_for)
+    #ready_ids, _ = ray.wait(rollout_ids, num_returns=num_to_wait_for)
     xxxt3 = time.time()
-    results = ray.get(ready_ids)
+    #results = ray.get(ready_ids)
+    results = ray.get(rollout_ids)
     xxxt4 = time.time()
 
     curr_task_results = []
