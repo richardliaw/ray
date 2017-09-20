@@ -468,7 +468,7 @@ if __name__ == "__main__":
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
 
     noiseless_score /= total_num_noiseless
-    noiseless_length /= noiseless_length
+    noiseless_length /= total_num_noiseless
 
     print("NOISELESS SCORE: ", noiseless_score)
     print("NOISELESS LENGTH: ", noiseless_length)
