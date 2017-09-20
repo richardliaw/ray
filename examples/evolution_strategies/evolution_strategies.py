@@ -185,7 +185,7 @@ if __name__ == "__main__":
                       help="The approximate number of episodes per update.")
   parser.add_argument("--num-timesteps", default=0, type=int,
                       help="The approximate number of episodes per update.")
-  parser.add_argument("--min-task-runtime", default=0.2, type=int,
+  parser.add_argument("--min-task-runtime", default=0.2, type=float,
                       help="The minimum time per batch.")
   parser.add_argument("--warmup", default=0, type=int,
                       help="Warm up the plasma manager connections.")
