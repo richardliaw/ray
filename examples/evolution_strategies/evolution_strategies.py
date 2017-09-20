@@ -181,7 +181,7 @@ if __name__ == "__main__":
                       help="The Redis address of the cluster.")
   parser.add_argument("--test-prob", default=None, type=float,
                       help="The probability of doing a test run.")
-  parser.add_argument("--num-episodes", default=0, type=int,
+  parser.add_argument("--num-episodes", default=1, type=int,
                       help="The approximate number of episodes per update.")
   parser.add_argument("--num-timesteps", default=0, type=int,
                       help="The approximate number of episodes per update.")
@@ -302,30 +302,30 @@ if __name__ == "__main__":
     theta_id = ray.put(theta)
 
     # Divide by 2 because each one does 2.
-    # num_to_wait_for = int(np.ceil(args.num_episodes / 2))
-    # num_batches = int(np.ceil(args.num_episodes / 2 / len(workers)))
+    #num_to_wait_for = int(np.ceil(args.num_episodes / 2))
+    num_batches = int(np.ceil(args.num_episodes / 2 / len(workers)))
 
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
-    # rollout_ids = []
+    rollout_ids = []
     xxxt1 = time.time()
 
-    rollout_ids = [worker.do_rollouts.remote(
-             theta_id,
-             ob_stat.mean if policy.needs_ob_stat else None,
-             ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+    # rollout_ids = [worker.do_rollouts.remote(
+    #          theta_id,
+    #          ob_stat.mean if policy.needs_ob_stat else None,
+    #          ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
 
-    # for _ in range(num_batches):
-    #     rollout_ids += [worker.do_rollouts.remote(
-    #         theta_id,
-    #         ob_stat.mean if policy.needs_ob_stat else None,
-    #         ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
+    for _ in range(num_batches):
+        rollout_ids += [worker.do_rollouts.remote(
+            theta_id,
+            ob_stat.mean if policy.needs_ob_stat else None,
+            ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
     xxxt2 = time.time()
 
     # Get the results of the rollouts.
-    #print("Submitting ", num_batches, " batches of ", len(workers))
+    print("Submitting ", num_batches, " batches of ", len(workers))
     #print("Waiting for ", num_to_wait_for)
-    #ready_ids, _ = ray.wait(rollout_ids, num_returns=num_to_wait_for)
+    ready_ids, _ = ray.wait(rollout_ids, num_returns=len(rollout_ids))
     xxxt3 = time.time()
     #results = ray.get(ready_ids)
     results = ray.get(rollout_ids)
