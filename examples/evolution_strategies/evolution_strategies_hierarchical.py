@@ -563,7 +563,7 @@ if __name__ == "__main__":
     #
     # xxxt7 = time.time()
     #
-    print("Putting: ", xxxt1 , xxxt0)
+    print("Putting: ", xxxt1 - xxxt0)
     print("Submitting: ", xxxt2 - xxxt1)
     print("Getting: ", xxxt3 - xxxt2)
     print("Updating: ", xxxt4 - xxxt3)
