@@ -450,6 +450,7 @@ if __name__ == "__main__":
     total_grad = np.zeros_like(theta)
     total_returns = 0
     for num_noiseless, noiseless_score, noiseless_length, grad, num_returns, obstat_info in results_and_grads:
+        print("xxx ", noiseless_score, noiseless_length, num_noiseless)
         noiseless_score += noiseless_score * num_noiseless
         noiseless_length += noiseless_length * num_noiseless
         total_num_noiseless += num_noiseless
