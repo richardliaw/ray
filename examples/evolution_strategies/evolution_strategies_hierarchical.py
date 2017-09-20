@@ -428,6 +428,9 @@ if __name__ == "__main__":
     assert theta.dtype == np.float32
 
     # Put the current policy weights in the object store.
+
+    xxxt0 = time.time()
+
     theta_id = ray.put(theta)
 
     # Divide by 2 because each one does 2.
@@ -451,6 +454,8 @@ if __name__ == "__main__":
     xxxt2 = time.time()
 
     results_and_grads = ray.get(results_and_grad_ids)
+
+    xxxt3 = time.time()
 
     total_noiseless_score = 0
     total_noiseless_length = 0
@@ -481,6 +486,8 @@ if __name__ == "__main__":
     print("NOISELESS SCORE: ", total_noiseless_score)
     print("NOISELESS LENGTH: ", total_noiseless_length)
 
+
+    xxxt4 = time.time()
 
     #ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
 
@@ -556,12 +563,10 @@ if __name__ == "__main__":
     #
     # xxxt7 = time.time()
     #
-    # print("Submitting: ", xxxt2 - xxxt1)
-    # print("Waiting: ", xxxt3 - xxxt2)
-    # print("Getting: ", xxxt4 - xxxt3)
-    # print("Parsing: ", xxxt5 - xxxt4)
-    # print("Summing: ", xxxt6 - xxxt5)
-    # print("Updating: ", xxxt7 - xxxt6)
+    print("Putting: ", xxxt1 , xxxt0)
+    print("Submitting: ", xxxt2 - xxxt1)
+    print("Getting: ", xxxt3 - xxxt2)
+    print("Updating: ", xxxt4 - xxxt3)
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
@@ -606,8 +611,9 @@ if __name__ == "__main__":
 
     iteration += 1
     print("iteration ", iteration)
+    print("total time elapsed ", time.time() - tstart)
 
-    if noiseless_score >= 6000:
+    if total_noiseless_score >= 6000:
       filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
       print("\n\nBreaking and storing results in ", filename, "\n\n")
       break
