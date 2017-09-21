@@ -135,7 +135,7 @@ class Worker(object):
 
     # Perform some rollouts with noise.
     task_tstart = time.time()
-    while (len(noise_inds) < self.num_episode_pairs_per_worker or
+    while (len(noise_inds) < 2 * self.num_episode_pairs_per_worker or
            time.time() - task_tstart < self.min_task_runtime):
       noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
       perturbation = self.config.noise_stdev * self.noise.get(
