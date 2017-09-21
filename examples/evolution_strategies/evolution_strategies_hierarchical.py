@@ -476,23 +476,18 @@ if __name__ == "__main__":
 
   result_info = []
 
-  from collections import OrderedDict
-  from csv import DictWriter
-  timing = OrderedDict()
-  filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
-  resultfile = open(filename, 'w')
-  writer = DictWriter(resultfile, ["start", "put"])
-  writer.writeheader()
+  writer = None
 
   for _ in range(100):
+    timing = {}
     theta = policy.get_trainable_flat()
     assert theta.dtype == np.float32
 
     # Put the current policy weights in the object store.
 
-    timing["start"] = time.time()
+    timing["1.start"] = time.time()
     theta_id = ray.put(theta)
-    timing["put"] = time.time()
+    timing["2.put"] = time.time()
 
     # Divide by 2 because each one does 2.
     #num_to_wait_for = int(np.ceil(args.num_episodes / 2))
@@ -506,10 +501,10 @@ if __name__ == "__main__":
             [theta_id], policy.num_params,
             ob_stat.mean if policy.needs_ob_stat else None,
             ob_stat.std if policy.needs_ob_stat else None, submit=time.time()) for ma in master_actors]
-    timing["launch"] = time.time()
+    timing["3.launch"] = time.time()
 
     results_and_grads = ray.get(results_and_grad_ids)
-    timing["gather"] = time.time()
+    timing["4.gather"] = time.time()
 
     total_noiseless_score = 0
     total_noiseless_length = 0
@@ -530,8 +525,8 @@ if __name__ == "__main__":
             ob_stat.increment(*obstat_info)
             #ob_count_this_batch += result['ob_count']
         worker_timings.append(_process_ma_timing(ma_timing))
-    import ipdb; ipdb.set_trace()
     avg_results = _average_dicts(worker_timings)
+    timing.update(avg_results)
 
     total_grad /= total_returns
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
@@ -539,18 +534,25 @@ if __name__ == "__main__":
     total_noiseless_length /= total_num_noiseless
     print("NOISELESS SCORE: ", total_noiseless_score)
     print("NOISELESS LENGTH: ", total_noiseless_length)
-    timing["update"] = time.time()
+    timing["5.update"] = time.time()
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
     if policy.needs_ob_stat:
       policy.set_ob_stat(ob_stat.mean, ob_stat.std)
 
-    step_tend = time.time()
+    timing["6.end"] = time.time()
 
     iteration += 1
     print("iteration ", iteration)
-    print("total time elapsed ", time.time() - timing["start"])
+    print("total time elapsed ", timing["6.end"] - timing["1.start"])
+
+    if writer is None:
+      from csv import DictWriter
+      filename = "es_{}_{}_{}_{}.csv".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
+      resultfile = open(filename, 'w')
+      writer = DictWriter(resultfile, list(timing.keys()))
+      writer.writeheader()
     writer.writerow(dict(timing))
 
     # if total_noiseless_score >= 6000:
