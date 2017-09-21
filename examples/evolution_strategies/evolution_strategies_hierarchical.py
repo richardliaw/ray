@@ -530,8 +530,12 @@ if __name__ == "__main__":
 
     total_grad /= total_returns
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
-    total_noiseless_score /= total_num_noiseless
-    total_noiseless_length /= total_num_noiseless
+    try:
+    	total_noiseless_score /= total_num_noiseless
+    	total_noiseless_length /= total_num_noiseless
+    except ZeroDivisionError:
+        print("No noiseless")
+
     print("NOISELESS SCORE: ", total_noiseless_score)
     print("NOISELESS LENGTH: ", total_noiseless_length)
     timing["5.update"] = time.time()
