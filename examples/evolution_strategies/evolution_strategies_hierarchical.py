@@ -62,19 +62,21 @@ def _process_subworker_timing(tm):
           "SUB_time_till_collection": time.time() - tm["end"]}
 
 def _process_ma_timing(tm):
-  tm["compute_g"] = tm["end"] - tm["process_returns"]
-  tm["process_returns"] = tm["process_returns"] - tm["process_obstats"]
-  tm["process_obstats"] = tm["process_obstats"] - tm["hier_rollouts"]
-  tm["hierr_o_duration"] = tm["hier_rollouts"] - tm["start"]
-  tm["launch_to_start"] = tm["start"] - tm["submit"]
-  tm["time_till_collection"] = time.time() - tm["end"]
-  return tm
+  result = { "MA_compute_g": tm["end"] - tm["process_returns"],
+             "MA_process_returns": tm["process_returns"] - tm["process_obstats"],
+             "MA_process_obstats":tm["process_obstats"] - tm["hier_rollouts"],
+             "MA_hierr_o_duration" : tm["hier_rollouts"] - tm["start"],
+             "MA_launch_to_start": tm["start"] - tm["submit"],
+             "MA_time_till_collection": time.time() - tm["end"]}
+  result.update(tm["workers"])
+  return result
 
 def _average_dicts(list_dicts):
   ret = {}
   template = list_dicts[0]
   for k in template.keys():
-    ret[k] = np.mean([d[k] for d in list_dicts])
+    if not type(k) == dict:
+      ret[k] = np.mean([d[k] for d in list_dicts])
   return ret
 
 @ray.remote
@@ -283,7 +285,7 @@ class MasterWorker(object):
                   ob_count += result['ob_count']
           if "timing" in result:
             worker_timing.append(_process_subworker_timing(result["timing"]))
-        timing.update(_average_dicts(worker_timing))
+        timing["workers"] = (_average_dicts(worker_timing))
 
 
         timing["process_obstats"] = time.time()
@@ -503,7 +505,7 @@ if __name__ == "__main__":
     results_and_grad_ids = [ma.do_rollouts_and_return_update.remote(
             [theta_id], policy.num_params,
             ob_stat.mean if policy.needs_ob_stat else None,
-            ob_stat.std if policy.needs_ob_stat else None, time.time()) for ma in master_actors]
+            ob_stat.std if policy.needs_ob_stat else None, submit=time.time()) for ma in master_actors]
     timing["launch"] = time.time()
 
     results_and_grads = ray.get(results_and_grad_ids)
