@@ -62,7 +62,13 @@ def _process_subworker_timing(tm):
           "SUB_time_till_collection": time.time() - tm["end"]}
 
 def _process_ma_timing(tm):
-  pass
+  tm["compute_g"] = tm["end"] - tm["process_returns"]
+  tm["process_returns"] = tm["process_returns"] - tm["process_obstats"]
+  tm["process_obstats"] = tm["process_obstats"] - tm["hier_rollouts"]
+  tm["hierr_o_duration"] = tm["hier_rollouts"] - tm["start"]
+  tm["launch_to_start"] = tm["start"] - tm["submit"]
+  tm["time_till_collection"] = time.time() - tm["end"]
+  return tm
 
 def _average_dicts(list_dicts):
   ret = {}
@@ -218,8 +224,9 @@ class MasterWorker(object):
     def no_op(self):
         return ray.get([w.no_op.remote() for w in self.workers])
 
-    def do_rollouts_and_return_update(self, params, policy_num_params, ob_mean, ob_std, timestep_limit=None):
+    def do_rollouts_and_return_update(self, params, policy_num_params, ob_mean, ob_std, timestep_limit=None, submit=None):
         timing = {}
+        timing["submit"] = submit
         timing["start"] = time.time()
         results = ray.get([w.do_rollouts.remote(params[0], ob_mean, ob_std, timestep_limit=timestep_limit, submit=time.time())
                            for w in self.workers])
@@ -304,10 +311,10 @@ class MasterWorker(object):
             proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
             (noise.get(idx, policy_num_params) for idx in noise_inds_n),
             batch_size=500)
-        timing["compute_g"] = time.time()
         #g /= returns_n2.size
         assert (g.shape == (policy_num_params,) and g.dtype == np.float32 and
                 count == len(noise_inds_n))
+        timing["end"] = time.time()
 
         if len(test_returns) == 0:
             return (0,
@@ -496,7 +503,7 @@ if __name__ == "__main__":
     results_and_grad_ids = [ma.do_rollouts_and_return_update.remote(
             [theta_id], policy.num_params,
             ob_stat.mean if policy.needs_ob_stat else None,
-            ob_stat.std if policy.needs_ob_stat else None) for ma in master_actors]
+            ob_stat.std if policy.needs_ob_stat else None, time.time()) for ma in master_actors]
     timing["launch"] = time.time()
 
     results_and_grads = ray.get(results_and_grad_ids)
@@ -520,7 +527,7 @@ if __name__ == "__main__":
         if policy.needs_ob_stat and obstat_info[0] is not None:
             ob_stat.increment(*obstat_info)
             #ob_count_this_batch += result['ob_count']
-        worker_timings.append(ma_timing)
+        worker_timings.append(_process_ma_timing(ma_timing))
     import ipdb; ipdb.set_trace()
     avg_results = _average_dicts(worker_timings)
 
