@@ -58,7 +58,18 @@ class SharedNoiseTable(object):
 @ray.remote
 class Worker(object):
   def __init__(self, config, policy_params, env_name, noise,
-               min_task_runtime=0.2, num_episode_pairs_per_worker=2):
+               min_task_runtime=0.2, num_episode_pairs_per_worker=2, pin_workers=False):
+    # Pin this worker to a core.
+    if pin_workers:
+        key = "pin" + ray.worker.global_worker.node_ip_address
+        # The first value returned by incr is 1.
+        index = (ray.worker.global_worker.redis_client.incr(key) - 1)
+        import psutil
+        p = psutil.Process()
+        p.cpu_affinity([index])
+        print("Pinning to core ", index)
+
+
     self.min_task_runtime = min_task_runtime
     self.num_episode_pairs_per_worker = num_episode_pairs_per_worker
 
@@ -172,10 +183,11 @@ class Worker(object):
 @ray.remote
 class MasterWorker(object):
     def __init__(self, num_workers_to_create, config, policy_params, env_name, noise_id,
-                 min_task_runtime=0.2, num_episode_pairs_per_worker=2):
+                 min_task_runtime=0.2, num_episode_pairs_per_worker=2, pin_workers=False):
         self.workers = [Worker.remote(config, policy_params, env_name, noise_id[0],
                                       min_task_runtime=args.min_task_runtime,
-                                      num_episode_pairs_per_worker=num_episode_pairs_per_worker)
+                                      num_episode_pairs_per_worker=num_episode_pairs_per_worker,
+                                      pin_workers=pin_workers)
                         for _ in range(num_workers_to_create)]
 
     def no_op(self):
@@ -326,6 +338,8 @@ if __name__ == "__main__":
                       help="Warm up the plasma manager connections.")
   parser.add_argument("--num-episode-pairs-per-worker", default=1, type=int,
                       help="Warm up the plasma manager connections.")
+  parser.add_argument("--pin-workers", action='store_true',
+                      help="pin the actors to specific cores.")
 
 
 
@@ -396,7 +410,8 @@ if __name__ == "__main__":
 
   master_actors = [MasterWorker.remote(args.num_workers_per_master, config, policy_params, env_name, [noise_id],
                                        min_task_runtime=args.min_task_runtime,
-                                       num_episode_pairs_per_worker=args.num_episode_pairs_per_worker)
+                                       num_episode_pairs_per_worker=args.num_episode_pairs_per_worker,
+                                       pin_workers=args.pin_workers)
                    for _ in range(args.num_master_workers)]
 
   print("waiting for master actors to finish starting")
