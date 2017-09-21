@@ -55,19 +55,19 @@ class SharedNoiseTable(object):
     return stream.randint(0, len(self.noise) - dim + 1)
 
 def _process_subworker_timing(tm):
-  return {"SUB_launch_to_start": tm["start"] - tm["submit"],
-          "SUB_rollouts": np.mean(tm["ro_duration"]),
-          "SUB_setup": tm["setup"] - tm["start"],
-          "SUB_duration": tm["end"] - tm["start"],
-          "SUB_time_till_collection": time.time() - tm["end"]}
+  return {"SUB_1launch_to_start": tm["start"] - tm["submit"],
+          "SUB_2setup": tm["setup"] - tm["start"],
+          "SUB_3rollouts": np.mean(tm["ro_duration"]),
+          "SUB_4time_till_collection": time.time() - tm["end"],
+          "SUB_duration": tm["end"] - tm["start"]}
 
 def _process_ma_timing(tm):
-  result = { "MA_compute_g": tm["end"] - tm["process_returns"],
-             "MA_process_returns": tm["process_returns"] - tm["process_obstats"],
-             "MA_process_obstats":tm["process_obstats"] - tm["hier_rollouts"],
-             "MA_hierr_o_duration" : tm["hier_rollouts"] - tm["start"],
-             "MA_launch_to_start": tm["start"] - tm["submit"],
-             "MA_time_till_collection": time.time() - tm["end"]}
+  result = { "MA_1launch_to_start": tm["start"] - tm["submit"],
+             "MA_2hier_ro_duration" : tm["hier_rollouts"] - tm["start"],
+             "MA_3process_obstats":tm["process_obstats"] - tm["hier_rollouts"],
+             "MA_4process_returns": tm["process_returns"] - tm["process_obstats"],
+             "MA_5compute_g": tm["end"] - tm["process_returns"],
+             "MA_6time_till_collection": time.time() - tm["end"]}
   result.update(tm["workers"])
   return result
 
