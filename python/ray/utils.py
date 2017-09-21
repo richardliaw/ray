@@ -136,7 +136,8 @@ def attempt_to_reserve_gpus(num_gpus, driver_id, local_scheduler,
     return success
 
 
-counter = 0
+
+counter = None
 
 def select_local_scheduler(driver_id, local_schedulers, num_gpus,
                            redis_client):
@@ -161,6 +162,8 @@ def select_local_scheduler(driver_id, local_schedulers, num_gpus,
     # # Loop through all of the local schedulers in a random order.
 
     global counter
+    if counter is None:
+        counter = np.random.randint(0, len(local_schedulers))
     counter += 1
     return hex_to_binary(local_schedulers[counter % len(local_schedulers)]["DBClientID"])
 

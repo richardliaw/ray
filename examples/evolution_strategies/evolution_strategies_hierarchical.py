@@ -420,6 +420,17 @@ if __name__ == "__main__":
 
   print("master actors have started")
 
+  # check workers per machine
+  r = ray.worker.global_worker.redis_client
+  max_num_workers = np.max([int(r.get(key).decode('ascii')) for key in r.keys("pin*")])
+  print("Some machine has ",
+        max_num_workers,
+        " workers on it.")
+
+  if max_num_workers > 32:
+      raise Exception("Too many workers on the same machine")
+
+
   env = gym.make(env_name)
   sess = utils.make_session(single_threaded=False)
   policy = policies.MujocoPolicy(env.observation_space, env.action_space,
