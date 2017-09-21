@@ -451,7 +451,7 @@ if __name__ == "__main__":
   timing = OrderedDict()
   filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
   resultfile = open(filename, 'w')
-  writer = DictWriter(filename, ["start", "put"])
+  writer = DictWriter(resultfile, ["start", "put"])
   writer.writeheader()
 
   for _ in range(100):
@@ -499,7 +499,7 @@ if __name__ == "__main__":
         if policy.needs_ob_stat and obstat_info[0] is not None:
             ob_stat.increment(*obstat_info)
             #ob_count_this_batch += result['ob_count']
-        worker_timings.append[ma_timing]
+        worker_timings.append(ma_timing)
     import ipdb; ipdb.set_trace()
 
     total_grad /= total_returns
