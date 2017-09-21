@@ -551,6 +551,12 @@ if __name__ == "__main__":
     print("iteration ", iteration)
     print("total time elapsed ", timing["6.end"] - timing["1.start"])
 
+    timing["iteration"] = timing["6.end"] - timing["1.start"]
+    timing["5.update"] = timing["5.update"] - timing["4.gather"]
+    timing["4.gather"] = timing["4.gather"] - timing["3.launch"]
+    timing["3.launch"] = timing["3.launch"] - timing["2.put"]
+    timing["2.put"] = timing["2.put"] - timing["1.start"]
+
     if writer is None:
       from csv import DictWriter
       filename = "es_{}_{}_{}_{}.csv".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
@@ -563,7 +569,3 @@ if __name__ == "__main__":
     #   filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
     #   print("\n\nBreaking and storing results in ", filename, "\n\n")
     #   break
-
-import time
-results_file = open(filename, 'wb')
-pickle.dump(result_info, results_file)
