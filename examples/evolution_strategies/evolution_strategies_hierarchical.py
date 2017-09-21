@@ -62,7 +62,7 @@ def _process_subworker_timing(tm):
           "SUB_time_till_collection": time.time() - tm["end"]}
 
 def _process_ma_timing(tm):
-  return None
+  pass
 
 def _average_dicts(list_dicts):
   ret = {}
@@ -276,7 +276,7 @@ class MasterWorker(object):
                   ob_count += result['ob_count']
           if "timing" in result:
             worker_timing.append(_process_subworker_timing(result["timing"]))
-        timing.update(_average_dicts(timing["workers"]))
+        timing.update(_average_dicts(worker_timing))
 
 
         timing["process_obstats"] = time.time()
@@ -522,7 +522,7 @@ if __name__ == "__main__":
             #ob_count_this_batch += result['ob_count']
         worker_timings.append(ma_timing)
     import ipdb; ipdb.set_trace()
-    avg_results = averaged_results(worker_timings)
+    avg_results = _average_dicts(worker_timings)
 
     total_grad /= total_returns
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
