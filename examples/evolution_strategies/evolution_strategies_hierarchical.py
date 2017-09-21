@@ -55,20 +55,20 @@ class SharedNoiseTable(object):
     return stream.randint(0, len(self.noise) - dim + 1)
 
 def _process_subworker_timing(tm):
-  return {"launch_to_start": tm["start"] - tm["submit"],
-          "rollouts": np.mean(tm["ro_duration"]) - tm["rollout_start"],
-          "setup": tm["setup"] - tm["start"],
-          "duration": tm["end"] - tm["start"],
-          "time_till_collection": time.time() - tm["end"]}
+  return {"SUB_launch_to_start": tm["start"] - tm["submit"],
+          "SUB_rollouts": np.mean(tm["ro_duration"]),
+          "SUB_setup": tm["setup"] - tm["start"],
+          "SUB_duration": tm["end"] - tm["start"],
+          "SUB_time_till_collection": time.time() - tm["end"]}
 
 def _process_ma_timing(tm):
   return None
 
 def _average_dicts(list_dicts):
   ret = {}
-  for template in list_dicts[0]:
-    for k in template.keys():
-      ret[k] = np.mean([d[k] for d in list_dicts])
+  template = list_dicts[0]
+  for k in template.keys():
+    ret[k] = np.mean([d[k] for d in list_dicts])
   return ret
 
 @ray.remote
@@ -234,7 +234,7 @@ class MasterWorker(object):
         ob_sum = None
         ob_sumsq = None
         ob_count = None
-        timing["workers"] = []
+        worker_timing = []
 
         # Loop over the results
         for result in results:
@@ -275,8 +275,9 @@ class MasterWorker(object):
               else:
                   ob_count += result['ob_count']
           if "timing" in result:
-            timing["workers"].append(_process_subworker_timing(result["timing"]))
-        timing["workers"] = _average_dicts(timing["workers"])
+            worker_timing.append(_process_subworker_timing(result["timing"]))
+        timing.update(_average_dicts(timing["workers"]))
+
 
         timing["process_obstats"] = time.time()
         #   if policy.needs_ob_stat and result['ob_count'] > 0:
