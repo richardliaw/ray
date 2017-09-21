@@ -109,6 +109,8 @@ class Worker(object):
 
   def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
     # Set the network weights.
+    timing = {}
+    timing["start"] = time.time()
     self.policy.set_trainable_flat(params)
 
     if self.policy.needs_ob_stat:
@@ -145,6 +147,8 @@ class Worker(object):
           }
 
     # Perform some rollouts with noise.
+    timing["setup"] = time.time()
+    timing["rollouts"] = []
     task_tstart = time.time()
     while (len(noise_inds) < 2 * self.num_episode_pairs_per_worker or
            time.time() - task_tstart < self.min_task_runtime):
@@ -166,6 +170,7 @@ class Worker(object):
       returns.append([rews_pos.sum(), rews_neg.sum()])
       sign_returns.append([np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
       lengths.append([len_pos, len_neg])
+      timing["rollouts"].append(time.time())
 
     return {
       "noise_inds_n":np.array(noise_inds),
@@ -177,7 +182,8 @@ class Worker(object):
       "ob_sum":(None if task_ob_stat.count == 0 else task_ob_stat.sum),
       "ob_sumsq":(None if task_ob_stat.count == 0 else task_ob_stat.sumsq),
       "ob_count":task_ob_stat.count,
-      "no_noise":False
+      "no_noise":False,
+      "timing": timing
       }
 
 @ray.remote
@@ -194,8 +200,11 @@ class MasterWorker(object):
         return ray.get([w.no_op.remote() for w in self.workers])
 
     def do_rollouts_and_return_update(self, params, policy_num_params, ob_mean, ob_std, timestep_limit=None):
+        timing = {}
+        timing["start"] = time.time()
         results = ray.get([w.do_rollouts.remote(params[0], ob_mean, ob_std, timestep_limit=timestep_limit)
                            for w in self.workers])
+        timing["hier_rollouts"] = time.time()
 
         curr_task_results = []
         ob_count_this_batch = 0
@@ -206,6 +215,7 @@ class MasterWorker(object):
         ob_sum = None
         ob_sumsq = None
         ob_count = None
+        timing["workers"] = []
 
         # Loop over the results
         for result in results:
@@ -245,8 +255,10 @@ class MasterWorker(object):
                   ob_count = result['ob_count']
               else:
                   ob_count += result['ob_count']
+          if "timing" in result:
+            timing["workers"].append(result["timing"])
 
-
+        timing["process_obstats"] = time.time()
         #   if policy.needs_ob_stat and result['ob_count'] > 0:
         #     ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
         #     ob_count_this_batch += result['ob_count']
@@ -265,14 +277,13 @@ class MasterWorker(object):
           proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
         else:
           raise NotImplementedError(config.return_proc_mode)
-
-        # Compute and take a step.
-        xxxt5 = time.time()
+        timing["process_returns"] = time.time()
+        # Compute and take a step
         g, count = utils.batched_weighted_sum(
             proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
             (noise.get(idx, policy_num_params) for idx in noise_inds_n),
             batch_size=500)
-
+        timing["compute_g"] = time.time()
         #g /= returns_n2.size
         assert (g.shape == (policy_num_params,) and g.dtype == np.float32 and
                 count == len(noise_inds_n))
@@ -283,32 +294,14 @@ class MasterWorker(object):
                     0,
                     g,
                     returns_n2.size,
-                    (ob_sum, ob_sumsq, ob_count))
+                    (ob_sum, ob_sumsq, ob_count), timing)
 
         return (len(test_returns),
                 np.mean(test_returns),
                 np.mean(test_lengths),
                 g,
                 returns_n2.size,
-                (ob_sum, ob_sumsq, ob_count))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                (ob_sum, ob_sumsq, ob_count), timing)
 
 
 if __name__ == "__main__":
@@ -453,16 +446,23 @@ if __name__ == "__main__":
 
   result_info = []
 
-  while True:
-    step_tstart = time.time()
+  from collections import OrderedDict
+  from csv import DictWriter
+  timing = OrderedDict()
+  filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
+  resultfile = open(filename, 'w')
+  writer = DictWriter(filename, ["start", "put"])
+  writer.writeheader()
+
+  for _ in range(100):
     theta = policy.get_trainable_flat()
     assert theta.dtype == np.float32
 
     # Put the current policy weights in the object store.
 
-    xxxt0 = time.time()
-
+    timing["start"] = time.time()
     theta_id = ray.put(theta)
+    timing["put"] = time.time()
 
     # Divide by 2 because each one does 2.
     #num_to_wait_for = int(np.ceil(args.num_episodes / 2))
@@ -471,29 +471,24 @@ if __name__ == "__main__":
     # Use the actors to do rollouts, note that we pass in the ID of the policy
     # weights.
     rollout_ids = []
-    xxxt1 = time.time()
-
-    # rollout_ids = [worker.do_rollouts.remote(
-    #          theta_id,
-    #          ob_stat.mean if policy.needs_ob_stat else None,
-    #          ob_stat.std if policy.needs_ob_stat else None) for worker in workers]
 
     results_and_grad_ids = [ma.do_rollouts_and_return_update.remote(
             [theta_id], policy.num_params,
             ob_stat.mean if policy.needs_ob_stat else None,
             ob_stat.std if policy.needs_ob_stat else None) for ma in master_actors]
-    xxxt2 = time.time()
+    timing["launch"] = time.time()
 
     results_and_grads = ray.get(results_and_grad_ids)
-
-    xxxt3 = time.time()
+    timing["gather"] = time.time()
 
     total_noiseless_score = 0
     total_noiseless_length = 0
     total_num_noiseless = 0
     total_grad = np.zeros_like(theta)
     total_returns = 0
-    for num_noiseless, noiseless_score, noiseless_length, grad, num_returns, obstat_info in results_and_grads:
+    worker_timings = []
+
+    for num_noiseless, noiseless_score, noiseless_length, grad, num_returns, obstat_info, ma_timing in results_and_grads:
         total_noiseless_score += noiseless_score * num_noiseless
         total_noiseless_length += noiseless_length * num_noiseless
         total_num_noiseless += num_noiseless
@@ -504,100 +499,16 @@ if __name__ == "__main__":
         if policy.needs_ob_stat and obstat_info[0] is not None:
             ob_stat.increment(*obstat_info)
             #ob_count_this_batch += result['ob_count']
-
+        worker_timings.append[ma_timing]
+    import ipdb; ipdb.set_trace()
 
     total_grad /= total_returns
-    # assert (g.shape == (policy.num_params,) and g.dtype == np.float32 and
-    #         count == len(noise_inds_n))
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
-
     total_noiseless_score /= total_num_noiseless
     total_noiseless_length /= total_num_noiseless
-
     print("NOISELESS SCORE: ", total_noiseless_score)
     print("NOISELESS LENGTH: ", total_noiseless_length)
-
-
-    xxxt4 = time.time()
-
-    #ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
-
-    #
-    # # Get the results of the rollouts.
-    # print("Submitting ", num_batches, " batches of ", len(workers))
-    # #print("Waiting for ", num_to_wait_for)
-    # ready_ids, _ = ray.wait(rollout_ids, num_returns=len(rollout_ids))
-    # xxxt3 = time.time()
-    # #results = ray.get(ready_ids)
-    # results = ray.get(rollout_ids)
-    # xxxt4 = time.time()
-    #
-    # curr_task_results = []
-    # ob_count_this_batch = 0
-    #
-    # test_returns = []
-    # test_lengths = []
-    #
-    # # Loop over the results
-    # for result in results:
-    #
-    #   if result['no_noise']:
-    #     test_returns.extend(result['returns_n2'])
-    #     test_lengths.extend(result['lengths_n2'])
-    #     continue
-    #
-    #   assert result['eval_length'] is None, "We aren't doing eval rollouts."
-    #   assert result['noise_inds_n'].ndim == 1
-    #   assert result['returns_n2'].shape == (len(result['noise_inds_n']), 2)
-    #   assert result['lengths_n2'].shape == (len(result['noise_inds_n']), 2)
-    #   assert result['returns_n2'].dtype == np.float32
-    #
-    #   result_num_eps = result['lengths_n2'].size
-    #   result_num_timesteps = result['lengths_n2'].sum()
-    #   episodes_so_far += result_num_eps
-    #   timesteps_so_far += result_num_timesteps
-    #
-    #   curr_task_results.append(result)
-    #   # Update ob stats.
-    #   if policy.needs_ob_stat and result['ob_count'] > 0:
-    #     ob_stat.increment(result['ob_sum'], result['ob_sumsq'], result['ob_count'])
-    #     ob_count_this_batch += result['ob_count']
-    #
-    # print("NOISELESS RETURNS:", np.mean(test_returns))
-    # print("NOISELESS LENGTHS:", np.mean(test_lengths))
-    #
-    # # Assemble the results.
-    # noise_inds_n = np.concatenate([r['noise_inds_n'] for
-    #                                r in curr_task_results])
-    # returns_n2 = np.concatenate([r['returns_n2'] for r in curr_task_results])
-    # lengths_n2 = np.concatenate([r['lengths_n2'] for r in curr_task_results])
-    # assert noise_inds_n.shape[0] == returns_n2.shape[0] == lengths_n2.shape[0]
-    # # Process the returns.
-    # if config.return_proc_mode == "centered_rank":
-    #   proc_returns_n2 = utils.compute_centered_ranks(returns_n2)
-    # else:
-    #   raise NotImplementedError(config.return_proc_mode)
-    #
-    # # Compute and take a step.
-    # xxxt5 = time.time()
-    # g, count = utils.batched_weighted_sum(
-    #     proc_returns_n2[:, 0] - proc_returns_n2[:, 1],
-    #     (noise.get(idx, policy.num_params) for idx in noise_inds_n),
-    #     batch_size=500)
-    #
-    # xxxt6 = time.time()
-    #
-    # g /= returns_n2.size
-    # assert (g.shape == (policy.num_params,) and g.dtype == np.float32 and
-    #         count == len(noise_inds_n))
-    # update_ratio = optimizer.update(-g + config.l2coeff * theta)
-    #
-    # xxxt7 = time.time()
-    #
-    print("Putting: ", xxxt1 - xxxt0)
-    print("Submitting: ", xxxt2 - xxxt1)
-    print("Getting: ", xxxt3 - xxxt2)
-    print("Updating: ", xxxt4 - xxxt3)
+    timing["update"] = time.time()
 
     # Update ob stat (we're never running the policy in the master, but we
     # might be snapshotting the policy).
@@ -605,49 +516,16 @@ if __name__ == "__main__":
       policy.set_ob_stat(ob_stat.mean, ob_stat.std)
 
     step_tend = time.time()
-    # tlogger.record_tabular("EpRewMean", returns_n2.mean())
-    # tlogger.record_tabular("EpRewStd", returns_n2.std())
-    # tlogger.record_tabular("EpLenMean", lengths_n2.mean())
-    #
-    # tlogger.record_tabular("Norm",
-    #                        float(np.square(policy.get_trainable_flat()).sum()))
-    # tlogger.record_tabular("GradNorm", float(np.square(g).sum()))
-    # tlogger.record_tabular("UpdateRatio", float(update_ratio))
-    #
-    # tlogger.record_tabular("EpisodesThisIter", lengths_n2.size)
-    # tlogger.record_tabular("EpisodesSoFar", episodes_so_far)
-    # tlogger.record_tabular("TimestepsThisIter", lengths_n2.sum())
-    # tlogger.record_tabular("TimestepsSoFar", timesteps_so_far)
-    #
-    # tlogger.record_tabular("ObCount", ob_count_this_batch)
-    #
-    # tlogger.record_tabular("TimeElapsedThisIter", step_tend - step_tstart)
-    # tlogger.record_tabular("TimeElapsed", step_tend - tstart)
-    # tlogger.dump_tabular()
-
-    # result_info.append({
-    #     "iteration": iteration,
-    #     "noiseless returns": np.mean(test_returns),
-    #     "noiseless lengths": np.mean(test_lengths),
-    #     "timestamp": time.time(),
-    #     "noisy returns": returns_n2.mean(),
-    #     "noisy lengths": lengths_n2.mean(),
-    #     "Submitting": xxxt2 - xxxt1,
-    #     "Waiting": xxxt3 - xxxt2,
-    #     "Getting": xxxt4 - xxxt3,
-    #     "Parsing": xxxt5 - xxxt4,
-    #     "Summing": xxxt6 - xxxt5,
-    #     "Updating": xxxt7 - xxxt6
-    # })
 
     iteration += 1
     print("iteration ", iteration)
-    print("total time elapsed ", time.time() - tstart)
+    print("total time elapsed ", time.time() - timing["start"])
+    writer.writerow(dict(timing))
 
-    if total_noiseless_score >= 6000:
-      filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
-      print("\n\nBreaking and storing results in ", filename, "\n\n")
-      break
+    # if total_noiseless_score >= 6000:
+    #   filename = "es_{}_{}_{}_{}.pickle".format(args.num_workers, args.test_prob, args.num_episodes, time.time())
+    #   print("\n\nBreaking and storing results in ", filename, "\n\n")
+    #   break
 
 import time
 results_file = open(filename, 'wb')
