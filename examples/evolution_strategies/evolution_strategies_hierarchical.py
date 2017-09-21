@@ -58,8 +58,9 @@ class SharedNoiseTable(object):
 @ray.remote
 class Worker(object):
   def __init__(self, config, policy_params, env_name, noise,
-               min_task_runtime=0.2):
+               min_task_runtime=0.2, num_episode_pairs_per_worker=2):
     self.min_task_runtime = min_task_runtime
+    self.num_episode_pairs_per_worker = num_episode_pairs_per_worker
 
     # if 'time_per_batch' in config and 'episodes_per_batch' in config:
     #   raise Exception("Cannot use both time_per_batch and episodes_per_batch")
@@ -134,7 +135,7 @@ class Worker(object):
 
     # Perform some rollouts with noise.
     task_tstart = time.time()
-    while (len(noise_inds) == 0 or
+    while (len(noise_inds) < self.num_episode_pairs_per_worker or
            time.time() - task_tstart < self.min_task_runtime):
       noise_idx = self.noise.sample_index(self.rs, self.policy.num_params)
       perturbation = self.config.noise_stdev * self.noise.get(
@@ -171,9 +172,10 @@ class Worker(object):
 @ray.remote
 class MasterWorker(object):
     def __init__(self, num_workers_to_create, config, policy_params, env_name, noise_id,
-                 min_task_runtime=0.2):
+                 min_task_runtime=0.2, num_episode_pairs_per_worker=2):
         self.workers = [Worker.remote(config, policy_params, env_name, noise_id[0],
-                                      min_task_runtime=args.min_task_runtime)
+                                      min_task_runtime=args.min_task_runtime,
+                                      num_episode_pairs_per_worker=num_episode_pairs_per_worker)
                         for _ in range(num_workers_to_create)]
 
     def no_op(self):
@@ -322,6 +324,8 @@ if __name__ == "__main__":
                       help="Warm up the plasma manager connections.")
   parser.add_argument("--num-workers-per-master", default=1, type=int,
                       help="Warm up the plasma manager connections.")
+  parser.add_argument("--num-episode-pairs-per-worker", default=1, type=int,
+                      help="Warm up the plasma manager connections.")
 
 
 
@@ -391,7 +395,8 @@ if __name__ == "__main__":
   print("Creating master actors.")
 
   master_actors = [MasterWorker.remote(args.num_workers_per_master, config, policy_params, env_name, [noise_id],
-                                       min_task_runtime=args.min_task_runtime)
+                                       min_task_runtime=args.min_task_runtime,
+                                       num_episode_pairs_per_worker=args.num_episode_pairs_per_worker)
                    for _ in range(args.num_master_workers)]
 
   print("waiting for master actors to finish starting")
