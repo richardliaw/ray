@@ -54,6 +54,22 @@ class SharedNoiseTable(object):
   def sample_index(self, stream, dim):
     return stream.randint(0, len(self.noise) - dim + 1)
 
+def _process_subworker_timing(tm):
+  return {"launch_to_start": tm["start"] - tm["submit"],
+          "rollouts": np.mean(tm["ro_duration"]) - tm["rollout_start"],
+          "setup": tm["setup"] - tm["start"],
+          "duration": tm["end"] - tm["start"],
+          "time_till_collection": time.time() - tm["end"]}
+
+def _process_ma_timing(tm):
+  return None
+
+def _average_dicts(list_dicts):
+  ret = {}
+  for template in list_dicts[0]:
+    for k in template.keys():
+      ret[k] = np.mean([d[k] for d in list_dicts])
+  return ret
 
 @ray.remote
 class Worker(object):
@@ -107,9 +123,10 @@ class Worker(object):
   def no_op(self):
     return 1
 
-  def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None):
+  def do_rollouts(self, params, ob_mean, ob_std, timestep_limit=None, submit=None):
     # Set the network weights.
     timing = {}
+    timing["submit"] = submit
     timing["start"] = time.time()
     self.policy.set_trainable_flat(params)
 
@@ -148,7 +165,8 @@ class Worker(object):
 
     # Perform some rollouts with noise.
     timing["setup"] = time.time()
-    timing["rollouts"] = []
+    timing["rollout_start"] = time.time()
+    timing["ro_duration"] = []
     task_tstart = time.time()
     while (len(noise_inds) < 2 * self.num_episode_pairs_per_worker or
            time.time() - task_tstart < self.min_task_runtime):
@@ -170,7 +188,8 @@ class Worker(object):
       returns.append([rews_pos.sum(), rews_neg.sum()])
       sign_returns.append([np.sign(rews_pos).sum(), np.sign(rews_neg).sum()])
       lengths.append([len_pos, len_neg])
-      timing["rollouts"].append(time.time())
+      timing["ro_duration"].append(time.time() - timing["rollout_start"])
+    timing["end"] = time.time()
 
     return {
       "noise_inds_n":np.array(noise_inds),
@@ -202,7 +221,7 @@ class MasterWorker(object):
     def do_rollouts_and_return_update(self, params, policy_num_params, ob_mean, ob_std, timestep_limit=None):
         timing = {}
         timing["start"] = time.time()
-        results = ray.get([w.do_rollouts.remote(params[0], ob_mean, ob_std, timestep_limit=timestep_limit)
+        results = ray.get([w.do_rollouts.remote(params[0], ob_mean, ob_std, timestep_limit=timestep_limit, submit=time.time())
                            for w in self.workers])
         timing["hier_rollouts"] = time.time()
 
@@ -256,7 +275,8 @@ class MasterWorker(object):
               else:
                   ob_count += result['ob_count']
           if "timing" in result:
-            timing["workers"].append(result["timing"])
+            timing["workers"].append(_process_subworker_timing(result["timing"]))
+        timing["workers"] = _average_dicts(timing["workers"])
 
         timing["process_obstats"] = time.time()
         #   if policy.needs_ob_stat and result['ob_count'] > 0:
@@ -501,6 +521,7 @@ if __name__ == "__main__":
             #ob_count_this_batch += result['ob_count']
         worker_timings.append(ma_timing)
     import ipdb; ipdb.set_trace()
+    avg_results = averaged_results(worker_timings)
 
     total_grad /= total_returns
     update_ratio = optimizer.update(-total_grad + config.l2coeff * theta)
