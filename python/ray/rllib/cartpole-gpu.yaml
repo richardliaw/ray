@@ -3,7 +3,7 @@ tune-cartpole:
     alg: DQN
     max_trials: 20
     resources:
-       cpu: 30
+       cpu: 1
     stop:
         time_total_s: 100
     parameters:

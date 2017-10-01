@@ -110,7 +110,7 @@ DEFAULT_CONFIG = dict(
     prioritized_replay_eps=1e-6,
 
     # Multi gpu options
-    multi_gpu_optimize=True,
+    multi_gpu_optimize=False,
     devices=["/cpu:0", "/cpu:1"])
 
 
