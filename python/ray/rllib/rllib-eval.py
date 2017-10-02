@@ -9,13 +9,15 @@ import os
 import random
 import sys
 
-import ray
-import yaml
 import numpy as np
+import ray
+import time
+import yaml
 import ray.rllib.ppo as ppo
 import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
+import ray.rllib.external_agent as external
 
 from tensorflow.python.client import device_lib
 
@@ -30,7 +32,8 @@ AGENTS = {
     'PPO': (ppo.PPOAgent, ppo.DEFAULT_CONFIG),
     'ES': (es.ESAgent, es.DEFAULT_CONFIG),
     'DQN': (dqn.DQNAgent, dqn.DEFAULT_CONFIG),
-    'A3C': (a3c.A3CAgent, a3c.DEFAULT_CONFIG)
+    'A3C': (a3c.A3CAgent, a3c.DEFAULT_CONFIG),
+    'External': (external.ExternalAgent, external.DEFAULT_CONFIG),
 }
 
 class Experiment(object):

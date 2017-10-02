@@ -198,7 +198,7 @@ class Agent(object):
         self.timesteps_total = metadata[2]
         self.time_total = metadata[3]
 
-    def stop(self)
+    def stop(self):
         """Releases all resources used by this agent."""
 
         sys.exit(0)
