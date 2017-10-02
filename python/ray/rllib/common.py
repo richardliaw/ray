@@ -90,6 +90,7 @@ class Agent(object):
         env_name (str): Name of the OpenAI gym environment to train against.
         config (obj): Algorithm-specific configuration data.
         logdir (str): Directory in which training outputs should be placed.
+        devices (list): List of GPU device strings, or the CPU device if not.
     """
 
     def __init__(self, env_name, config, upload_dir=None, upload_id=''):
@@ -105,6 +106,13 @@ class Agent(object):
         upload_dir = "file:///tmp/ray" if upload_dir is None else upload_dir
         self.experiment_id = uuid.uuid4().hex
         self.env_name = env_name
+
+        gpu_ids = ray.get_gpu_ids()
+        if gpu_ids:
+            self.devices = ['/gpu:{}'.format(i) for i in gpu_ids]
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
+        else:
+            self.devices = ['/cpu:0']
 
         self.config = config
         self.config.update({"experiment_id": self.experiment_id})

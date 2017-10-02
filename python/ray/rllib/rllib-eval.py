@@ -17,8 +17,11 @@ import ray.rllib.es as es
 import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 
+from tensorflow.python.client import device_lib
 
-# TODO(rliaw): Change prints to logging
+def get_available_gpus():
+    local_device_protos = device_lib.list_local_devices()
+    return [x.name for x in local_device_protos if x.device_type == 'GPU']
 
 
 # TODO(rliaw): Catalog for Agents (AgentCatalog.)
@@ -43,6 +46,7 @@ class Experiment(object):
         self.stopping_criterion = stopping_criterion
         self.agent = None
         self.out_dir = out_dir
+        self.num_gpus = resources.get('gpu', 0)
         self.i = i
 
     def resource_requirements(self):
@@ -57,8 +61,9 @@ class Experiment(object):
                     'Unknown agent config `{}`, all agent configs: {}'.format(
                         k, config.keys()))
         config.update(self.config)
+        cls = ray.remote(agent_class, num_gpus=self.resources.get('gpu', 0))
         # TODO(rliaw): make sure agent takes in SEED parameter
-        self.agent = ray.remote(agent_class).remote(
+        self.agent = cls.remote(
             self.env, config, self.out_dir, 'trial_{}_{}'.format(
                 self.i, self.param_str()))
 
@@ -163,8 +168,10 @@ class ExperimentRunner(object):
         self._experiments = experiments
         self._status = {e: ExperimentState() for e in self._experiments}
         self._pending = {}
+        # TODO(ekl) query the ray cluster for these counts
         self._avail_resources = {
-            'cpu': multiprocessing.cpu_count()
+            'cpu': multiprocessing.cpu_count(),
+            'gpu': len(get_available_gpus()),
         }
         self._committed_resources = {k: 0 for k in self._avail_resources}
 
@@ -254,6 +261,8 @@ if __name__ == '__main__':
         print()
 
     debug_print('Starting')
+    assert runner.can_launch_more(), "Not enough resources to start"
+
     while not runner.is_finished():
         while runner.can_launch_more():
             runner.launch_experiment()
