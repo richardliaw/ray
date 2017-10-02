@@ -370,7 +370,7 @@ class DQNAgent(Agent):
                 else:
                     # Minimize the error in Bellman's equation on a batch
                     # sampled from replay buffer.
-                    for _ in range(config["train_batch_size"] // config["sgd_batch_size"]):
+                    for _ in range(max(1, config["train_batch_size"] // config["sgd_batch_size"])):
                         dt = time.time()
                         gradients = [
                             self.actor.get_gradient(self.cur_timestep)]
