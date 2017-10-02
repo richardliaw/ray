@@ -298,6 +298,9 @@ class RemoteActor(Actor):
         os.environ["CUDA_VISIBLE_DEVICES"] = ""
         Actor.__init__(self, env_name, config, logdir)
 
+    def stop(self):
+        sys.exit(0)
+
 
 class DQNAgent(Agent):
     def __init__(self, env_name, config, upload_dir=None, upload_id=''):
@@ -309,9 +312,8 @@ class DQNAgent(Agent):
             self._init(config, env_name)
 
     def stop(self):
-        if self.workers:
-            ray.get([w.stop.remote() for w in self.workers])
-        self.actor.sess.close()
+        for w in self.workers:
+            w.stop.remote()
         sys.exit(0)
 
     def _init(self, config, env_name):

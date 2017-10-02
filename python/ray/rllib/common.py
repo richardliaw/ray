@@ -10,6 +10,7 @@ import tempfile
 import time
 import uuid
 import smart_open
+import ray
 
 if sys.version_info[0] == 2:
     import cStringIO as StringIO
@@ -196,6 +197,11 @@ class Agent(object):
         self.iteration = metadata[1]
         self.timesteps_total = metadata[2]
         self.time_total = metadata[3]
+
+    def stop(self)
+        """Releases all resources used by this agent."""
+
+        sys.exit(0)
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""

@@ -4,7 +4,7 @@ tune-pong1:
     max_trials: 9
     resources:
        cpu: 1
-       gpu: 1
+       gpu: 0
     stop:
         episode_reward_mean: 19
     parameters:

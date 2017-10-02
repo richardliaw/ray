@@ -61,15 +61,16 @@ class Experiment(object):
                     'Unknown agent config `{}`, all agent configs: {}'.format(
                         k, config.keys()))
         config.update(self.config)
-        cls = ray.remote(agent_class, num_gpus=self.resources.get('gpu', 0))
+        cls = ray.remote(num_gpus=self.resources.get('gpu', 0))(agent_class)
         # TODO(rliaw): make sure agent takes in SEED parameter
         self.agent = cls.remote(
             self.env, config, self.out_dir, 'trial_{}_{}'.format(
                 self.i, self.param_str()))
 
     def stop(self):
-#        ray.get(self.agent.stop.remote())
+        self.agent.stop.remote()
         self.agent = None
+        time.sleep(2)  # TODO(ekl) do a blocking wait for stopping
 
     def train_remote(self):
         return self.agent.train.remote()
@@ -251,7 +252,7 @@ class ExperimentRunner(object):
 if __name__ == '__main__':
     experiments = parse_configuration(sys.argv[1])
     runner = ExperimentRunner(experiments)
-    ray.init()
+    ray.init(num_gpus=len(get_available_gpus()))
 
     # TODO(ekl) implement crash recovery from status files
     
@@ -261,7 +262,8 @@ if __name__ == '__main__':
         print()
 
     debug_print('Starting')
-    assert runner.can_launch_more(), "Not enough resources to start"
+    assert runner.can_launch_more(), \
+        "Not enough resources for even one experiment"
 
     while not runner.is_finished():
         while runner.can_launch_more():
