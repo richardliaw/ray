@@ -44,7 +44,10 @@ class Experiment(object):
         self.resources = resources
         # TODO(rliaw): Stopping criterion needs direction (min or max)
         self.stopping_criterion = stopping_criterion
+        self.last_result = None
+        self.checkpoint_path = None
         self.agent = None
+        self.status = PENDING
         self.out_dir = out_dir
         self.num_gpus = resources.get('gpu', 0)
         self.i = i
@@ -52,12 +55,14 @@ class Experiment(object):
     def checkpoint(self):
         path = ray.get(self.agent.save.remote())
         print("checkpointed at " + path)
+        self.checkpoint_path = path
         return path
 
     def resource_requirements(self):
         return self.resources
 
     def start(self):
+        self.status = RUNNING
         (agent_class, agent_config) = AGENTS[self.alg]
         config = agent_config.copy()
         for k in self.config.keys():
@@ -73,6 +78,7 @@ class Experiment(object):
                 self.i, self.param_str()))
 
     def stop(self):
+        self.status = TERMINATED
         self.agent.stop.remote()
         ray.get(self.agent.__ray_terminate__.remote(
             self.agent._ray_actor_id.id()))
@@ -86,10 +92,30 @@ class Experiment(object):
         return any(getattr(result, criteria) >= stop_value
                     for criteria, stop_value in self.stopping_criterion.items())
 
+    def should_checkpoint(self):
+        if self.cp_freq is None:
+            return False
+        if self.checkpoint_path is None:
+            return True
+        return (self.last_result.training_iteration) % self.cp_freq == 0
+
     def param_str(self):
         return '_'.join(
             [k + '=' + str(v) for k, v in self.config.items()
                 if self.was_resolved[k]])
+
+    def progress(self):
+        if self.last_result is None:
+            return self.status
+        return '{}, {} s, {} ts, {} itrs, {} rew'.format(
+            self.status,
+            int(self.last_result.time_total_s),
+            int(self.last_result.timesteps_total),
+            self.last_result.training_iteration + 1,
+            round(self.last_result.episode_reward_mean, 1))
+
+    def update_progress(self, new_result):
+        self.last_result = new_result
 
     def __str__(self):
         identifier = '{}_{}_{}'.format(self.alg, self.env, self.i)
@@ -103,33 +129,3 @@ class Experiment(object):
 
     def __hash__(self):
         return hash(str(self))
-
-
-class ExperimentState(object):
-    def __init__(self, experiment):
-        self.state = PENDING
-        self.experiment = experiment
-        self.cp_freq = self.experiment.cp_freq
-        self.checkpoint_path = None
-        self.last_result = None
-        self.last_cp_iteration = None  # Could checkpoint at beginning
-
-    def should_checkpoint(self):
-        if self.cp_freq is None:
-            return False
-        if self.last_cp_iteration is None:
-            return True
-        return (self.last_result.training_iteration) % self.cp_freq == 0
-
-    def set_cp_path(path):
-        self.checkpoint_path = path
-
-    def __repr__(self):
-        if self.last_result is None:
-            return self.state
-        return '{}, {} s, {} ts, {} itrs, {} rew'.format(
-            self.state,
-            int(self.last_result.time_total_s),
-            int(self.last_result.timesteps_total),
-            self.last_result.training_iteration + 1,
-            round(self.last_result.episode_reward_mean, 1))
