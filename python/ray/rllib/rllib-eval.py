@@ -19,11 +19,11 @@ import ray.rllib.dqn as dqn
 import ray.rllib.a3c as a3c
 import ray.rllib.external_agent as external
 
-from tensorflow.python.client import device_lib
 
-def get_available_gpus():
-    local_device_protos = device_lib.list_local_devices()
-    return [x.name for x in local_device_protos if x.device_type == 'GPU']
+def gpu_count():
+    if os.path.exists("/proc/driver/nvidia/gpus"):
+        return len(os.path.listdir("/proc/driver/nvidia/gpus"))
+    return 0
 
 
 # TODO(rliaw): Catalog for Agents (AgentCatalog.)
@@ -175,7 +175,7 @@ class ExperimentRunner(object):
         # TODO(ekl) query the ray cluster for these counts
         self._avail_resources = {
             'cpu': multiprocessing.cpu_count(),
-            'gpu': len(get_available_gpus()),
+            'gpu': gpu_count(),
         }
         self._committed_resources = {k: 0 for k in self._avail_resources}
 
@@ -255,7 +255,7 @@ class ExperimentRunner(object):
 if __name__ == '__main__':
     experiments = parse_configuration(sys.argv[1])
     runner = ExperimentRunner(experiments)
-    ray.init(num_gpus=len(get_available_gpus()))
+    ray.init(num_gpus=gpu_count())
 
     # TODO(ekl) implement crash recovery from status files
     

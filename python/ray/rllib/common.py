@@ -110,10 +110,10 @@ class Agent(object):
 
         gpu_ids = ray.get_gpu_ids()
         if gpu_ids:
-            self.devices = ['/gpu:{}'.format(i) for i in gpu_ids]
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
             print("Setting CUDA_VISIBLE_DEVICES={}".format(
                 os.environ["CUDA_VISIBLE_DEVICES"]))
+            self.devices = ['/gpu:{}'.format(i) for i in range(len(gpu_ids))]
         else:
             self.devices = ['/cpu:0']
 
