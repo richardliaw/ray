@@ -22,7 +22,7 @@ import ray.rllib.external_agent as external
 
 def gpu_count():
     if os.path.exists("/proc/driver/nvidia/gpus"):
-        return len(os.path.listdir("/proc/driver/nvidia/gpus"))
+        return len(os.listdir("/proc/driver/nvidia/gpus"))
     return 0
 
 
