@@ -215,8 +215,7 @@ class Agent(object):
 
     def stop(self):
         """Releases all resources used by this agent."""
-
-        sys.exit(0)
+        pass
 
     def compute_action(self, observation):
         """Computes an action using the current trained policy."""

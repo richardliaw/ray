@@ -314,7 +314,6 @@ class DQNAgent(Agent):
     def stop(self):
         for w in self.workers:
             w.stop.remote()
-        sys.exit(0)
 
     def _init(self, config, env_name):
         self.actor = Actor(env_name, config, self.logdir)

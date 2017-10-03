@@ -72,8 +72,8 @@ class Experiment(object):
 
     def stop(self):
         self.agent.stop.remote()
+        self.agent.__ray_terminate__.remote(a._ray_actor_id.id())
         self.agent = None
-        time.sleep(2)  # TODO(ekl) do a blocking wait for stopping
 
     def train_remote(self):
         return self.agent.train.remote()
