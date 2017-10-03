@@ -6,14 +6,13 @@ import multiprocessing
 import ray
 
 from ray.rllib.hpsearch.experiment import (
-    ExperimentState, PENDING, RUNNING, TERMINATED)
+    PENDING, RUNNING, TERMINATED)
 from ray.rllib.hpsearch.utils import gpu_count
 
 class ExperimentRunner(object):
 
     def __init__(self, experiments):
         self._experiments = experiments
-        self._status = {e: ExperimentState(e) for e in self._experiments}
         self._pending = {}
         # TODO(ekl) query the ray cluster for these counts
         self._avail_resources = {
@@ -23,8 +22,8 @@ class ExperimentRunner(object):
         self._committed_resources = {k: 0 for k in self._avail_resources}
 
     def is_finished(self):
-        for (exp, status) in self._status.items():
-            if status.state in [PENDING, RUNNING]:
+        for e in self._experiments:
+            if e.status in [PENDING, RUNNING]:
                 return False
         return True
 
@@ -34,7 +33,6 @@ class ExperimentRunner(object):
 
     def launch_experiment(self):
         exp = self._get_runnable()
-        self._status[exp].state = RUNNING
         self._commit_resources(exp.resource_requirements())
         exp.start()
         self._pending[exp.train_remote()] = exp
@@ -45,27 +43,23 @@ class ExperimentRunner(object):
         del self._pending[result_id]
         result = ray.get(result_id)
         print("result", result)
-        status = self._status[exp]
-        status.last_result = result
+        exp.update_progress(result)
 
         if exp.should_stop(result):
-            status.state = TERMINATED
             self._return_resources(exp.resource_requirements())
             exp.stop()
         else:
             # TODO(rliaw): This implements checkpoint in a blocking manner
-            if status.should_checkpoint():
-                status.set_cp_path(exp.checkpoint())
+            if exp.should_checkpoint():
+                exp.checkpoint()
             self._pending[exp.train_remote()] = exp
 
         # TODO(ekl) also switch to other experiments if the current one
         # doesn't look promising, i.e. bandits
 
-
     def _get_runnable(self):
         for exp in self._experiments:
-            status = self._status[exp]
-            if (status.state == PENDING and
+            if (exp.status == PENDING and
                     self._has_resources(exp.resource_requirements())):
                 return exp
         return None
@@ -90,7 +84,7 @@ class ExperimentRunner(object):
 
     def debug_string(self):
         statuses = [
-            ' - {}:\t{}'.format(e, self._status[e]) for e in self._experiments]
+            ' - {}:\t{}'.format(e, e.status) for e in self._experiments]
         return 'Available resources: {}'.format(self._avail_resources) + \
             '\nCommitted resources: {}'.format(self._committed_resources) + \
             '\nAll experiments:\n' + '\n'.join(statuses)
