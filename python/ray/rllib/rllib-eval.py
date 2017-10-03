@@ -38,11 +38,12 @@ AGENTS = {
 
 class Experiment(object):
     def __init__(
-            self, env, alg, stopping_criterion,
+            self, env, alg, stopping_criterion, cp_freq,
             out_dir, i, config, was_resolved, resources):
         self.alg = alg
         self.env = env
         self.config = config
+        self.cp_freq = cp_freq
         self.was_resolved = was_resolved
         self.resources = resources
         # TODO(rliaw): Stopping criterion needs direction (min or max)
@@ -51,6 +52,11 @@ class Experiment(object):
         self.out_dir = out_dir
         self.num_gpus = resources.get('gpu', 0)
         self.i = i
+
+    def checkpoint(self):
+        path = ray.get(self.agent.save.remote())
+        print("checkpointed at " + path)
+        return path
 
     def resource_requirements(self):
         return self.resources
@@ -133,13 +139,14 @@ def parse_configuration(yaml_file):
             np.random.seed(exp_cfg['search']['search_seed'])
         env_name = exp_cfg['env']
         alg_name = exp_cfg['alg']
+        cp_freq = exp_cfg.get('checkpoint_freq')
         stopping_criterion = exp_cfg['stop']
         out_dir = 'file:///tmp/rllib/' + exp_name
         os.makedirs(out_dir, exist_ok=True)
         for i in range(exp_cfg['max_trials']):
             resolved, was_resolved = resolve(exp_cfg['parameters'], i)
             experiments.append(Experiment(
-                env_name, alg_name, stopping_criterion, out_dir, i,
+                env_name, alg_name, stopping_criterion, cp_freq, out_dir, i,
                 resolved, was_resolved, exp_cfg['resources']))
 
     return experiments
@@ -151,9 +158,23 @@ TERMINATED = 'TERMINATED'
 
 
 class ExperimentState(object):
-    def __init__(self):
+    def __init__(self, experiment):
         self.state = PENDING
+        self.experiment = experiment
+        self.cp_freq = self.experiment.cp_freq
+        self.checkpoint_path = None
         self.last_result = None
+        self.last_cp_iteration = None  # Could checkpoint at beginning
+
+    def should_checkpoint(self):
+        if self.cp_freq is None:
+            return False
+        if self.last_cp_iteration is None:
+            return True
+        return (self.last_result.training_iteration) % self.cp_freq == 0
+
+    def set_cp_path(path):
+        self.checkpoint_path = path
 
     def __repr__(self):
         if self.last_result is None:
@@ -170,7 +191,7 @@ class ExperimentRunner(object):
 
     def __init__(self, experiments):
         self._experiments = experiments
-        self._status = {e: ExperimentState() for e in self._experiments}
+        self._status = {e: ExperimentState(e) for e in self._experiments}
         self._pending = {}
         # TODO(ekl) query the ray cluster for these counts
         self._avail_resources = {
@@ -210,12 +231,15 @@ class ExperimentRunner(object):
             self._return_resources(exp.resource_requirements())
             exp.stop()
         else:
+            # TODO(rliaw): This implements checkpoint in a blocking manner
+            if status.should_checkpoint():
+                status.set_cp_path(exp.checkpoint())
             self._pending[exp.train_remote()] = exp
 
         # TODO(ekl) also switch to other experiments if the current one
         # doesn't look promising, i.e. bandits
 
-        # TODO(ekl) checkpoint periodically
+
 
     def _get_runnable(self):
         for exp in self._experiments:
