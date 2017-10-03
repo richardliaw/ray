@@ -78,7 +78,8 @@ class Experiment(object):
 
     def stop(self):
         self.agent.stop.remote()
-        ray.get(self.agent.__ray_terminate__.remote(a._ray_actor_id.id()))
+        ray.get(self.agent.__ray_terminate__.remote(
+            self.agent._ray_actor_id.id()))
         self.agent = None
 
     def train_remote(self):
