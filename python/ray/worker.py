@@ -291,8 +291,9 @@ class Worker(object):
                                        "be incorrect in some cases."
                                        .format(type(e.example_object)))
                     print(warning_message)
-                except serialization.RayNotDictionarySerializable:
-                    _register_class(type(e.example_object), pickle=True)
+                except (serialization.RayNotDictionarySerializable,
+                        pickle.pickle.PicklingError):
+                    _register_class(type(e.example_object), use_pickle=True)
                     warning_message = ("WARNING: Falling back to serializing "
                                        "objects of type {} by using pickle. "
                                        "This may be inefficient."
@@ -519,7 +520,7 @@ class Worker(object):
             # actually run the function locally.
             pickled_function = pickle.dumps(function)
 
-            function_to_run_id = random_string()
+            function_to_run_id = hashlib.sha1(pickled_function).digest()
             key = b"FunctionsToRun:" + function_to_run_id
             # First run the function on the driver. Pass in the number of
             # workers on this node that have already started executing this
@@ -527,13 +528,25 @@ class Worker(object):
             # counter starts at 0.
             counter = self.redis_client.hincrby(self.node_ip_address,
                                                 key, 1) - 1
+            # We always run the task locally.
             function({"counter": counter, "worker": self})
+            # Check if the function has already been put into redis.
+            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
+            if not function_exported:
+                # In this case, the function has already been exported, so
+                # we don't need to export it again.
+                return
             # Run the function on all workers.
             self.redis_client.hmset(key,
                                     {"driver_id": self.task_driver_id.id(),
                                      "function_id": function_to_run_id,
                                      "function": pickled_function})
             self.redis_client.rpush("Exports", key)
+            # TODO(rkn): If the worker fails after it calls setnx and before it
+            # successfully completes the hmset and rpush, then the program will
+            # most likely hang. This could be fixed by making these three
+            # operations into a transaction (or by implementing a custom
+            # command that does all three things).
 
     def push_error_to_driver(self, driver_id, error_type, message, data=None):
         """Push an error message to the driver to be printed in the background.
@@ -1040,6 +1053,28 @@ def _initialize_serialization(worker=global_worker):
         custom_serializer=array_custom_serializer,
         custom_deserializer=array_custom_deserializer)
 
+    def ordered_dict_custom_serializer(obj):
+        return list(obj.keys()), list(obj.values())
+
+    def ordered_dict_custom_deserializer(obj):
+        return collections.OrderedDict(zip(obj[0], obj[1]))
+
+    worker.serialization_context.register_type(
+        collections.OrderedDict, 20 * b"\x02", pickle=False,
+        custom_serializer=ordered_dict_custom_serializer,
+        custom_deserializer=ordered_dict_custom_deserializer)
+
+    def default_dict_custom_serializer(obj):
+        return list(obj.keys()), list(obj.values()), obj.default_factory
+
+    def default_dict_custom_deserializer(obj):
+        return collections.defaultdict(obj[2], zip(obj[0], obj[1]))
+
+    worker.serialization_context.register_type(
+        collections.defaultdict, 20 * b"\x03", pickle=False,
+        custom_serializer=default_dict_custom_serializer,
+        custom_deserializer=default_dict_custom_deserializer)
+
     if worker.mode in [SCRIPT_MODE, SILENT_MODE]:
         # These should only be called on the driver because _register_class
         # will export the class to all of the workers.
@@ -1047,9 +1082,9 @@ def _initialize_serialization(worker=global_worker):
         _register_class(RayGetError)
         _register_class(RayGetArgumentError)
         # Tell Ray to serialize lambdas with pickle.
-        _register_class(type(lambda: 0), pickle=True)
+        _register_class(type(lambda: 0), use_pickle=True)
         # Tell Ray to serialize types with pickle.
-        _register_class(type(int), pickle=True)
+        _register_class(type(int), use_pickle=True)
 
 
 def get_address_info_from_redis_helper(redis_address, node_ip_address):
@@ -1137,7 +1172,9 @@ def _init(address_info=None,
           num_cpus=None,
           num_gpus=None,
           num_custom_resource=None,
-          num_redis_shards=None):
+          num_redis_shards=None,
+          plasma_directory=None,
+          huge_pages=False):
     """Helper method to connect to an existing Ray cluster or start a new one.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1181,6 +1218,10 @@ def _init(address_info=None,
             with.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         Address information about the started processes.
@@ -1239,7 +1280,9 @@ def _init(address_info=None,
             num_cpus=num_cpus,
             num_gpus=num_gpus,
             num_custom_resource=num_custom_resource,
-            num_redis_shards=num_redis_shards)
+            num_redis_shards=num_redis_shards,
+            plasma_directory=plasma_directory,
+            huge_pages=huge_pages)
     else:
         if redis_address is None:
             raise Exception("When connecting to an existing cluster, "
@@ -1261,6 +1304,12 @@ def _init(address_info=None,
         if object_store_memory is not None:
             raise Exception("When connecting to an existing cluster, "
                             "object_store_memory must not be provided.")
+        if plasma_directory is not None:
+            raise Exception("When connecting to an existing cluster, "
+                            "plasma_directory must not be provided.")
+        if huge_pages:
+            raise Exception("When connecting to an existing cluster, "
+                            "huge_pages must not be provided.")
         # Get the node IP address if one is not provided.
         if node_ip_address is None:
             node_ip_address = services.get_node_ip_address(redis_address)
@@ -1293,7 +1342,8 @@ def _init(address_info=None,
 def init(redis_address=None, node_ip_address=None, object_id_seed=None,
          num_workers=None, driver_mode=SCRIPT_MODE, redirect_output=False,
          num_cpus=None, num_gpus=None, num_custom_resource=None,
-         num_redis_shards=None):
+         num_redis_shards=None,
+         plasma_directory=None, huge_pages=False):
     """Connect to an existing Ray cluster or start one and connect to it.
 
     This method handles two cases. Either a Ray cluster already exists and we
@@ -1326,6 +1376,10 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
             flag is experimental and is subject to changes in the future.
         num_redis_shards: The number of Redis shards to start in addition to
             the primary Redis shard.
+        plasma_directory: A directory where the Plasma memory mapped files will
+            be created.
+        huge_pages: Boolean flag indicating whether to start the Object
+            Store with hugetlbfs support. Requires plasma_directory.
 
     Returns:
         Address information about the started processes.
@@ -1340,7 +1394,9 @@ def init(redis_address=None, node_ip_address=None, object_id_seed=None,
                  num_workers=num_workers, driver_mode=driver_mode,
                  redirect_output=redirect_output, num_cpus=num_cpus,
                  num_gpus=num_gpus, num_custom_resource=num_custom_resource,
-                 num_redis_shards=num_redis_shards)
+                 num_redis_shards=num_redis_shards,
+                 plasma_directory=plasma_directory,
+                 huge_pages=huge_pages)
 
 
 def cleanup(worker=global_worker):
@@ -1863,12 +1919,12 @@ def disconnect(worker=global_worker):
     worker.serialization_context = pyarrow.SerializationContext()
 
 
-def register_class(cls, pickle=False, worker=global_worker):
+def register_class(cls, use_pickle=False, worker=global_worker):
     raise Exception("The function ray.register_class is deprecated. It should "
                     "be safe to remove any calls to this function.")
 
 
-def _register_class(cls, pickle=False, worker=global_worker):
+def _register_class(cls, use_pickle=False, worker=global_worker):
     """Enable serialization and deserialization for a particular class.
 
     This method runs the register_class function defined below on every worker,
@@ -1877,21 +1933,28 @@ def _register_class(cls, pickle=False, worker=global_worker):
 
     Args:
         cls (type): The class that ray should serialize.
-        pickle (bool): If False then objects of this class will be serialized
-            by turning their __dict__ fields into a dictionary. If True, then
-            objects of this class will be serialized using pickle.
+        use_pickle (bool): If False then objects of this class will be
+            serialized by turning their __dict__ fields into a dictionary. If
+            True, then objects of this class will be serialized using pickle.
 
     Raises:
         Exception: An exception is raised if pickle=False and the class cannot
             be efficiently serialized by Ray.
     """
-    class_id = random_string()
+    if not use_pickle:
+        # In this case, the class ID will be used to deduplicate the class
+        # across workers.
+        class_id = hashlib.sha1(pickle.dumps(cls)).digest()
+    else:
+        # In this case, the class ID only needs to be meaningful on this worker
+        # and not across workers.
+        class_id = random_string()
 
     def register_class_for_serialization(worker_info):
         worker_info["worker"].serialization_context.register_type(
-            cls, class_id, pickle=pickle)
+            cls, class_id, pickle=use_pickle)
 
-    if not pickle:
+    if not use_pickle:
         # Raise an exception if cls cannot be serialized efficiently by Ray.
         serialization.check_serializable(cls)
         worker.run_function_on_all_workers(register_class_for_serialization)
@@ -2072,6 +2135,12 @@ def wait(object_ids, num_returns=1, timeout=None, worker=global_worker):
         # so all objects in object_id are ready.
         if worker.mode == PYTHON_MODE:
             return object_ids[:num_returns], object_ids[num_returns:]
+
+        # TODO(rkn): This is a temporary workaround for
+        # https://github.com/ray-project/ray/issues/997. However, it should be
+        # fixed in Arrow instead of here.
+        if len(object_ids) == 0:
+            return [], []
 
         object_id_strs = [plasma.ObjectID(object_id.id())
                           for object_id in object_ids]
