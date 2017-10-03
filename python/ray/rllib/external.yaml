@@ -1,9 +1,9 @@
 test:
-    env: PongDeterministic-v4
+    env: Pong
     alg: External
     max_trials: 9
     resources:
-       cpu: 1
+       cpu: 2
        gpu: 0
     stop:
         episode_reward_mean: 19
@@ -11,3 +11,7 @@ test:
     parameters:
         file_path: /home/eric/Desktop/homework/hw3/run_dqn_atari.py
         entrypoint: rllib_main
+        batch_size:
+            eval: 32 * 4**(_i // 3)
+        learning_freq:
+            eval: 4 ** (1 + _i % 3)

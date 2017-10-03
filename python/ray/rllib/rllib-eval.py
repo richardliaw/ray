@@ -59,7 +59,7 @@ class Experiment(object):
         (agent_class, agent_config) = AGENTS[self.alg]
         config = agent_config.copy()
         for k in self.config.keys():
-            if k not in config:
+            if k not in config and self.alg != "External":
                 raise Exception(
                     'Unknown agent config `{}`, all agent configs: {}'.format(
                         k, config.keys()))

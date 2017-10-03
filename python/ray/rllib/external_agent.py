@@ -14,7 +14,7 @@ from ray.rllib.common import Agent, TrainingResult
 DEFAULT_CONFIG = {
     "file_path": "/path/to/file.py",
     "entrypoint": "rllib_main",
-    "min_iteration_time_s": 5
+    "min_iteration_time_s": 5,
 }
 
 
