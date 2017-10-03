@@ -140,6 +140,9 @@ class Agent(object):
             "%s algorithm created with logdir '%s'",
             self.__class__.__name__, self.logdir)
 
+        self.result_logger = RLLibLogger(
+            os.path.join(self.logdir, "result.json"))
+
         self.iteration = 0
         self.time_total = 0.0
         self.timesteps_total = 0
@@ -169,7 +172,17 @@ class Agent(object):
         for field in result:
             assert field is not None, result
 
+        self._log_result(result)
+
         return result
+
+    def _log_result(self, result):
+        """Appends the given result to this agent's log dir."""
+
+        # We need to use a custom json serializer class so that NaNs get
+        # encoded as null as required by Athena.
+        json.dump(result._asdict(), self.result_logger, cls=RLLibEncoder)
+        self.result_logger.write("\n")
 
     def save(self):
         """Saves the current model state to a checkpoint.

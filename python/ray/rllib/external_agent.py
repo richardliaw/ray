@@ -93,4 +93,6 @@ class ExternalAgent(Agent):
         for field in result:
             assert field is not None, result
 
+        self._log_result(result)
+
         return result
