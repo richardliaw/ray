@@ -112,6 +112,8 @@ class Agent(object):
         if gpu_ids:
             self.devices = ['/gpu:{}'.format(i) for i in gpu_ids]
             os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(map(str, gpu_ids))
+            print("Setting CUDA_VISIBLE_DEVICES={}".format(
+                os.environ["CUDA_VISIBLE_DEVICES"]))
         else:
             self.devices = ['/cpu:0']
 
