@@ -68,8 +68,8 @@ def parse_configuration(yaml_file):
 
 if __name__ == '__main__':
     experiments = parse_configuration(sys.argv[1])
-    runner = ExperimentRunner(experiments)
     ray.init(num_gpus=gpu_count())
+    runner = ExperimentRunner(experiments)
 
     # TODO(ekl) implement crash recovery from status files
     

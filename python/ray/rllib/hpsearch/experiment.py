@@ -104,7 +104,7 @@ class Experiment(object):
             [k + '=' + str(v) for k, v in self.config.items()
                 if self.was_resolved[k]])
 
-    def progress(self):
+    def progress_string(self):
         if self.last_result is None:
             return self.status
         return '{}, {} s, {} ts, {} itrs, {} rew'.format(
