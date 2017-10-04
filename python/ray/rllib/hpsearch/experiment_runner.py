@@ -9,16 +9,13 @@ from ray.rllib.hpsearch.experiment import (
     PENDING, RUNNING, TERMINATED)
 from ray.rllib.hpsearch.utils import gpu_count
 
+
 class ExperimentRunner(object):
 
     def __init__(self, experiments):
         self._experiments = experiments
         self._pending = {}
-        # TODO(ekl) query the ray cluster for these counts
-        self._avail_resources = {
-            'cpu': multiprocessing.cpu_count(),
-            'gpu': gpu_count(),
-        }
+        self._update_avail_resources()
         self._committed_resources = {k: 0 for k in self._avail_resources}
 
     def is_finished(self):
@@ -28,6 +25,7 @@ class ExperimentRunner(object):
         return True
 
     def can_launch_more(self):
+        self._update_avail_resources()
         exp = self._get_runnable()
         return exp is not None
 
@@ -66,21 +64,33 @@ class ExperimentRunner(object):
 
     def _has_resources(self, resources):
         for k, v in resources.items():
-            if self._avail_resources[k] < v:
+            if self._avail_resources[k] - self._committed_resources[k] < v:
                 return False
         return True
 
     def _commit_resources(self, resources):
         for k, v in resources.items():
-            self._avail_resources[k] -= v
             self._committed_resources[k] += v
             assert self._avail_resources[k] >= 0
 
     def _return_resources(self, resources):
         for k, v in resources.items():
-            self._avail_resources[k] += v
             self._committed_resources[k] -= v
             assert self._committed_resources[k] >= 0
+
+    def _update_avail_resources(self):
+        clients = ray.global_state.client_table()
+        local_schedulers = [    
+            entry for client in clients.values() for entry in client
+                if entry['ClientType'] == 'local_scheduler' \
+                    and not entry['Deleted']]
+        num_clients = len(local_schedulers)
+        num_cpus = sum(ls['NumCPUs'] for ls in local_schedulers)
+        num_gpus = sum(ls['NumGPUs'] for ls in local_schedulers)
+        self._avail_resources = {
+            'cpu': int(num_cpus),
+            'gpu': int(num_gpus),
+        }
 
     def debug_string(self):
         statuses = [
