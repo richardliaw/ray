@@ -94,7 +94,8 @@ class ExperimentRunner(object):
 
     def debug_string(self):
         statuses = [
-            ' - {}:\t{}'.format(e, e.status) for e in self._experiments]
+            ' - {}:\t{}'.format(e, e.progress_string())
+                for e in self._experiments]
         return 'Available resources: {}'.format(self._avail_resources) + \
             '\nCommitted resources: {}'.format(self._committed_resources) + \
             '\nAll experiments:\n' + '\n'.join(statuses)
