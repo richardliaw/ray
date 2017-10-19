@@ -33,7 +33,8 @@ class Trial(object):
     def __init__(
             self, env_creator, alg, config={}, local_dir='/tmp/ray',
             agent_id=None, resources=Resources(cpu=1, gpu=0),
-            stopping_criterion={}, checkpoint_freq=None, upload_dir=None):
+            stopping_criterion={}, checkpoint_freq=None,
+            restore_path=None, upload_dir=None):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
