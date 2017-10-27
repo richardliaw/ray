@@ -18,27 +18,27 @@ def unflatten(vector, shapes):
 
 
 class TensorFlowVariables(object):
-    """An object used to extract variables from a loss function.
+    """An object used to extract variables from a head of the graph.
 
     This object also provides methods for getting and setting the weights of
     the relevant variables.
 
     Attributes:
         sess (tf.Session): The tensorflow session used to run assignment.
-        loss: The loss function passed in by the user.
-        variables (List[tf.Variable]): Extracted variables from the loss.
+        heads: The heads function passed in by the user.
+        variables (List[tf.Variable]): Extracted variables from the heads.
         assignment_placeholders (List[tf.placeholders]): The nodes that weights
             get passed to.
       assignment  _nodes (List[tf.Tensor]): The nodes that assign the weights.
     """
-    def __init__(self, loss, sess=None):
+    def __init__(self, heads, sess=None):
         """Creates a TensorFlowVariables instance."""
         import tensorflow as tf
         self.sess = sess
-        self.loss = loss
-        queue = deque([loss])
+        nodes = list(heads)
+        queue = deque(nodes)
         variable_names = []
-        explored_inputs = set([loss])
+        explored_inputs = set(nodes)
 
         # We do a BFS on the dependency graph of the input function to find
         # the variables.
@@ -63,9 +63,9 @@ class TensorFlowVariables(object):
             if "Variable" in tf_obj.node_def.op:
                 variable_names.append(tf_obj.node_def.name)
         self.variables = OrderedDict()
-        for v in [v for v in tf.global_variables()
-                  if v.op.node_def.name in variable_names]:
-            self.variables[v.op.node_def.name] = v
+        for v in tf.global_variables():
+            if v.op.node_def.name in variable_names:
+                self.variables[v.op.node_def.name] = v
         self.placeholders = dict()
         self.assignment_nodes = []
 
@@ -107,7 +107,7 @@ class TensorFlowVariables(object):
                       feed_dict=dict(zip(placeholders, arrays)))
 
     def get_weights(self):
-        """Returns a list of the weights of the loss function variables."""
+        """Returns a list of the weights of the head dependencies."""
         self._check_sess()
         return {k: v.eval(session=self.sess)
                 for k, v in self.variables.items()}
