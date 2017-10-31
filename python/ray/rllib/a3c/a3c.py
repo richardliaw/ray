@@ -65,12 +65,12 @@ class A3CAgent(Agent):
             t = time.time()
             self.grad_on_worker()
             dt = time.time() - t
-            self.timing["grad_worker"] += dt
+            self.timing["grad_worker"] -= dt
         else:
             t = time.time()
             self.grad_on_driver()
             dt = time.time() - t
-            self.timing["grad_driver"] += dt
+            self.timing["grad_driver"] -= dt
         res = self._fetch_metrics_from_workers()
         return res
 
