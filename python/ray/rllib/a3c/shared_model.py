@@ -60,3 +60,13 @@ class SharedModel(TFPolicy):
 
     def get_initial_features(self):
         return []
+
+    def model_update(self, batch):
+        info = {}
+        feed_dict = {
+            self.x: batch["si"],
+            self.ac: batch["a"],
+            self.adv: batch["adv"],
+            self.r: batch["r"],
+        }
+        self.sess.run(self._apply_gradients, feed_dict=feed_dict)

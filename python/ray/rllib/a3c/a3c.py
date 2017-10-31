@@ -10,6 +10,7 @@ import ray
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
+from ray.rllib.a3c.sync_runner import RemoteSyncRunner
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 from ray.tune.result import TrainingResult
@@ -26,6 +27,12 @@ DEFAULT_CONFIG = {
               "channel_major": True}
 }
 
+def multinomial(vals):
+    vals = np.array(vals)
+    vals -= np.max(vals)
+    v = np.exp(vals)
+    p_vals = v / np.sum(v)
+    return np.random.multinomial(n, p_vals)
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
@@ -40,30 +47,52 @@ class A3CAgent(Agent):
         self.policy = policy_cls(
             self.env.observation_space.shape, self.env.action_space)
         self.agents = [
-            RemoteRunner.remote(self.env_creator, policy_cls, i,
+            RemoteSyncRunner.remote(self.env_creator, policy_cls, i,
                                 self.config["batch_size"],
                                 self.config["model"], self.logdir)
             for i in range(self.config["num_workers"])]
         self.parameters = self.policy.get_weights()
+        self.iter = 0
+        self.timing = {"grad_worker": 0, "grad_driver": 0}
 
     def _train(self):
+        self.iter += 1
+        if self.iter < 50:
+            WORK = random.random() < 0.5
+        else:
+            WORK = multinomial([v for v in self.timing.values()])
+        if WORK:
+            t = time.time()
+            self.grad_on_worker()
+            dt = time.time() - t
+            self.timing["grad_worker"] += dt
+        else:
+            t = time.time()
+            self.grad_on_driver()
+            dt = time.time() - t
+            self.timing["grad_driver"] += dt
+        res = self._fetch_metrics_from_workers()
+        return res
+
+    def grad_on_worker(self):
         gradient_list = [
             agent.compute_gradient.remote(self.parameters)
             for agent in self.agents]
-        max_batches = self.config["num_batches_per_iteration"]
-        batches_so_far = len(gradient_list)
-        while gradient_list:
-            done_id, gradient_list = ray.wait(gradient_list)
-            gradient, info = ray.get(done_id)[0]
-            self.policy.apply_gradients(gradient)
-            self.parameters = self.policy.get_weights()
-            if batches_so_far < max_batches:
-                batches_so_far += 1
-                gradient_list.extend(
-                    [self.agents[info["id"]].compute_gradient.remote(
-                        self.parameters)])
-        res = self._fetch_metrics_from_workers()
-        return res
+        gradient_list = ray.get(gradient_list)
+        p = [np.zeros_like(v) for v in gradient_list[0]]
+        for grads in gradient_list:
+            for i in enumerate(grads):
+                p[i] += val
+        self.policy.apply_gradients(p)
+
+    def grad_on_driver(self):
+        batches = [
+            agent.set_sample.remote(self.parameters)
+            for agent in self.agents]
+        batches = ray.get(batches)
+        import ipdb; ipdb.set_trace()
+        # merge all batches together
+        self.policy.model_update(p)
 
     def _fetch_metrics_from_workers(self):
         episode_rewards = []

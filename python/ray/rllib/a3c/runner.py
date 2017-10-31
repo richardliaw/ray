@@ -79,5 +79,12 @@ class Runner(object):
                 "size": len(batch.a)}
         return gradient, info
 
+    def set_weights(self, params):
+        self.policy.set_weights(params)
+
+    # def get_batch(self, params):
+    #     self.policy.set_weights(params)
+    #     rollout = self.pull_batch_from_queue()
+    #     return process_rollout(rollout, gamma=0.99, lambda_=1.0)
 
 RemoteRunner = ray.remote(Runner)
