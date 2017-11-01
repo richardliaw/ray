@@ -15,6 +15,7 @@ from ray.rllib.a3c.sync_runner import RemoteSyncRunner
 from ray.rllib.a3c.shared_model import SharedModel
 from ray.rllib.a3c.shared_model_lstm import SharedModelLSTM
 from ray.tune.result import TrainingResult
+from csv import DictWriter
 
 
 DEFAULT_CONFIG = {
@@ -55,10 +56,9 @@ class A3CAgent(Agent):
         self.parameters = self.policy.get_weights()
         self.iter = 0
         self.timing = {"worker": 0, "driver": 0, "init": 0}
-        from csv import DictWriter
-        f = open("stats.csv", "a")
-        self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
-        self.logger.writeheader()
+        with open("/tmp/stats.csv", "a") as f:
+            self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
+            self.logger.writeheader()
 
     def _train(self):
         self.iter += 1
@@ -77,7 +77,11 @@ class A3CAgent(Agent):
         dt = (time.time() - t) * 100
         cur_score = self.timing[style]
         self.timing[style] = 0.1 * cur_score - 0.9 * dt
-        self.logger.writerow({"type": style, "time": dt, "driver_p": stats[0], "worker_p": stats[1]})
+        with open("/tmp/stats.csv", "a") as f:
+            self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
+            self.logger.writerow({"type": style, "time": dt, "driver_p": stats[0], "worker_p": stats[1]})
+        import sys
+        sys.stdout.flush()
         res = self._fetch_metrics_from_workers()
         return res
 
