@@ -63,7 +63,7 @@ class A3CAgent(Agent):
     def _train(self):
         self.iter += 1
         stats = (None, None)
-        if self.iter < 10:
+        if self.iter < 50:
             WORK = np.random.rand() < 0.5
             style = "init"
         else:
@@ -76,7 +76,7 @@ class A3CAgent(Agent):
             self.grad_on_driver()
         dt = (time.time() - t) * 100
         cur_score = self.timing[style]
-        self.timing[style] = 0.1 * cur_score - 0.9 * dt
+        self.timing[style] = 0.8 * cur_score - 0.2 * dt
         with open("/tmp/stats.csv", "a") as f:
             self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
             self.logger.writerow({"type": style, "time": dt, "driver_p": stats[0], "worker_p": stats[1]})
