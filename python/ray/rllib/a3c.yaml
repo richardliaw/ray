@@ -1,0 +1,22 @@
+# a3c:
+#     env: CartPole-v0
+#     alg: A3C
+#     resources:
+#        cpu: 2
+#     config:
+#         use_lstm: False
+#         num_workers: 1
+#         num_batches_per_iteration: 10
+#         batch_size: 20
+a3c-2:
+     env: PongDeterministic-v4
+     alg: A3C
+     resources:
+        cpu: 4
+        gpu: 1
+     stop:
+        training_iteration: 50
+     config:
+         num_workers: 4
+         num_batches_per_iteration: 10
+         batch_size: 20
