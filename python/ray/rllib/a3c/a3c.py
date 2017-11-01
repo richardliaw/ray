@@ -21,7 +21,7 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
     "batch_size": 10,
-    "use_lstm": False,
+    "use_lstm": True,
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
