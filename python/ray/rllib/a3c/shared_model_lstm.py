@@ -68,6 +68,17 @@ class SharedModelLSTM(TFPolicy):
             {self.x: [ob], self.state_in[0]: c, self.state_in[1]: h})
         return action[0], vf[0], c, h
 
+    def model_update(self, batch):
+        feed_dict = {
+            self.x: batch["si"],
+            self.ac: batch["a"],
+            self.adv: batch["adv"],
+            self.r: batch["r"],
+            self.state_in[0]: batch["features"][0],
+            self.state_in[1]: batch["features"][1],
+        }
+        self.sess.run(self._apply_gradients, feed_dict=feed_dict)
+
     def value(self, ob, c, h):
         # process_rollout is very non-intuitive due to value being a float
         vf = self.sess.run(self.vf, {self.x: [ob],

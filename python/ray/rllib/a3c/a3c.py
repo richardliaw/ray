@@ -7,6 +7,7 @@ import pickle
 import os
 
 import ray
+import time
 from ray.rllib.agent import Agent
 from ray.rllib.a3c.envs import create_and_wrap
 from ray.rllib.a3c.runner import RemoteRunner
@@ -20,7 +21,7 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     "num_batches_per_iteration": 100,
     "batch_size": 10,
-    "use_lstm": True,
+    "use_lstm": False,
     "model": {"grayscale": True,
               "zero_mean": False,
               "dim": 42,
@@ -32,7 +33,7 @@ def multinomial(vals):
     vals -= np.max(vals)
     v = np.exp(vals)
     p_vals = v / np.sum(v)
-    return np.random.multinomial(n, p_vals)
+    return np.random.choice(2, p=p_vals), list(p_vals)
 
 class A3CAgent(Agent):
     _agent_name = "A3C"
@@ -53,24 +54,30 @@ class A3CAgent(Agent):
             for i in range(self.config["num_workers"])]
         self.parameters = self.policy.get_weights()
         self.iter = 0
-        self.timing = {"grad_worker": 0, "grad_driver": 0}
+        self.timing = {"worker": 0, "driver": 0, "init": 0}
+        from csv import DictWriter
+        f = open("stats.csv", "a")
+        self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
+        self.logger.writeheader()
 
     def _train(self):
         self.iter += 1
-        if self.iter < 50:
-            WORK = random.random() < 0.5
+        stats = (None, None)
+        if self.iter < 10:
+            WORK = np.random.rand() < 0.5
+            style = "init"
         else:
-            WORK = multinomial([v for v in self.timing.values()])
-        if WORK:
-            t = time.time()
+            WORK, stats = multinomial([self.timing["driver"], self.timing["worker"]])
+            style = "worker" if WORK else "driver"
+        t = time.time()
+        if style == "worker":
             self.grad_on_worker()
-            dt = time.time() - t
-            self.timing["grad_worker"] -= dt
         else:
-            t = time.time()
             self.grad_on_driver()
-            dt = time.time() - t
-            self.timing["grad_driver"] -= dt
+        dt = (time.time() - t) * 100
+        cur_score = self.timing[style]
+        self.timing[style] = 0.1 * cur_score - 0.9 * dt
+        self.logger.writerow({"type": style, "time": dt, "driver_p": stats[0], "worker_p": stats[1]})
         res = self._fetch_metrics_from_workers()
         return res
 
@@ -78,10 +85,10 @@ class A3CAgent(Agent):
         gradient_list = [
             agent.compute_gradient.remote(self.parameters)
             for agent in self.agents]
-        gradient_list = ray.get(gradient_list)
+        gradient_list, _ = zip(*ray.get(gradient_list))
         p = [np.zeros_like(v) for v in gradient_list[0]]
         for grads in gradient_list:
-            for i in enumerate(grads):
+            for i, val in enumerate(grads):
                 p[i] += val
         self.policy.apply_gradients(p)
 
@@ -90,9 +97,12 @@ class A3CAgent(Agent):
             agent.set_sample.remote(self.parameters)
             for agent in self.agents]
         batches = ray.get(batches)
-        import ipdb; ipdb.set_trace()
         # merge all batches together
-        self.policy.model_update(p)
+        megabatch = {}
+        for k, v in batches[0].items():
+            if hasattr(v, "shape"):
+                megabatch[k] = np.concatenate([b[k] for b in batches], axis=0)
+        self.policy.model_update(megabatch)
 
     def _fetch_metrics_from_workers(self):
         episode_rewards = []
