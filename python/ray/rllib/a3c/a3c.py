@@ -56,14 +56,14 @@ class A3CAgent(Agent):
         self.parameters = self.policy.get_weights()
         self.iter = 0
         self.timing = {"worker": 0, "driver": 0, "init": 0}
-        with open("/tmp/stats.csv", "a") as f:
+        with open("/tmp/stats.csv", "w") as f:
             self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
             self.logger.writeheader()
 
     def _train(self):
         self.iter += 1
         stats = (None, None)
-        if self.iter < 50:
+        if self.iter < 100:
             WORK = np.random.rand() < 0.5
             style = "init"
         else:
@@ -79,7 +79,7 @@ class A3CAgent(Agent):
         self.timing[style] = 0.8 * cur_score - 0.2 * dt
         with open("/tmp/stats.csv", "a") as f:
             self.logger = DictWriter(f, ["type", "time", "driver_p", "worker_p"])
-            self.logger.writerow({"type": style, "time": dt, "driver_p": stats[0], "worker_p": stats[1]})
+            self.logger.writerow({"type": style, "time": dt / 100, "driver_p": stats[0], "worker_p": stats[1]})
         import sys
         sys.stdout.flush()
         res = self._fetch_metrics_from_workers()
