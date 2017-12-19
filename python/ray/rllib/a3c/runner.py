@@ -49,8 +49,7 @@ class A3CEvaluator(Evaluator):
         """
         return self.sampler.get_metrics()
 
-    def compute_gradient(self):
-        rollout = self.sampler.get_data()
+    def compute_gradients(self, rollout):
         obs_filter = self.sampler.get_obs_filter(flush=True)
 
         traj = process_rollout(
@@ -60,11 +59,14 @@ class A3CEvaluator(Evaluator):
         info["rew_filter"] = self.rew_filter
         return gradient, info
 
-    def apply_gradient(self, grads):
+    def apply_gradients(self, grads):
         self.policy.apply_gradients(grads)
 
     def set_weights(self, params):
         self.policy.set_weights(params)
+
+    def get_weights(self):
+        return self.policy.get_weights()
 
     def update_filters(self, obs_filter=None, rew_filter=None):
         if rew_filter:
