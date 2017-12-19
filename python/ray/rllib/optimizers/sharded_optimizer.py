@@ -2,6 +2,7 @@ import ray
 import numpy as np
 from ray.rllib.optimizers.optimizer import Optimizer
 
+
 class ParameterServer(object):
     def __init__(self, weight_shard: list):
         self.params = {k: v.copy() for k, v in weight_shard}
@@ -14,18 +15,12 @@ class ParameterServer(object):
 
     def get_weights(self):
         weights = list(self.params.items())
-        print("Loading", list(zip(*weights))[0])
         return weights
 
     def ip(self):
         return ray.services.get_node_ip_address()
 
 def create_ps(weight_shard: list):
-    count = len(weight_shard)
-    ParameterServer.update_and_get_weights = ray.method(
-         num_return_vals=count)(ParameterServer.update_and_get_weights)
-    ParameterServer.get_weights = ray.method(
-         num_return_vals=count)(ParameterServer.get_weights)
     RemotePS = ray.remote(ParameterServer)
     return RemotePS.remote(weight_shard)
 
@@ -59,18 +54,15 @@ class ShardedPS():
 
     def update(self, sorted_deltas: list):
         assert len(sorted_deltas) == self._num_weights
-        new_weights = []
+        weight_ids = []
         for ps_id, ps in self.ps_dict.items():
             shard = [sorted_deltas[i] for i in self.get_indices(ps_id)]
-            new_weights.extend(
-                ps.update_and_get_weights.remote(*shard))
-        return new_weights
+            weight_ids.append(ps.update_and_get_weights.remote(*shard))
+        return weight_ids
 
     def get_weight_ids(self):
-        weight_ids = []
-        for ps in self.ps_dict.values():
-            weight_ids.extend(ps.get_weights.remote())
-        return weight_ids
+        return [ps.get_weights.remote()
+                    for ps in self.ps_dict.values()]
 
 
 class PSOptimizer(Optimizer):

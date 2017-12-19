@@ -18,7 +18,11 @@ class ShardA3CEvaluator(A3CEvaluator):
         super(ExtendedA3CEvaluator, self)._init()
         self.ps_count = self.config["ps_count"]
 
-    def compute_deltas(self, *weight_list):
+    def compute_deltas(self, *shards):
+        weight_list = []
+        for s in shards:
+            weight_list += s
+
         weights = {k: delt for k, delt in weight_list}
         self.policy.set_weights(weights)
         grad, _ = self.compute_gradients(self.sample())
