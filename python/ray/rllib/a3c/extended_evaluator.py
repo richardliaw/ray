@@ -28,8 +28,6 @@ class ShardA3CEvaluator(A3CEvaluator):
                 print(e)
                 pass
 
-
-
     def compute_deltas(self, *shards): # NEED object IDs
         old_weights = reconstruct_weights(shards)
         self.set_flat(old_weights)
@@ -56,20 +54,4 @@ def shard(array, num):
 
 def reconstruct_weights(shards):
     return np.concatenate(shards)
-
-# def _split_iterator(k, weight, num):
-#     return ((k, split) for split in np.array_split(weight, num))
-
-# def shard(weight_dict, num):
-#     shard_iter = zip(*(_split_iterator(k, weight, num) for k, weight in weight_dict.items()))
-#     return [dict(shard) for shard in shard_iter]
-
-# def reconstruct_weights(shard_list):
-#     weight_dict = {k: [] for k in shard_list[0]}
-#     for shard in shard_list:
-#         for k, weight in shard.items():
-#             weight_dict[k].append(weight)
-
-#     return {k: np.concatenate(v) for k, v in weight_dict.items()}
-
 

@@ -6,7 +6,6 @@ from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, s
 @ray.remote
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, ps_id):
-        # self.params = {k: v.copy() for k, v in weight_shard}
         self.ps_id = ps_id
         try:
             import psutil
@@ -25,36 +24,17 @@ class ParameterServer(object):
         return self.get_weights()
 
     def get_weights(self):
-        # weights = list(self.params.items())
-        # weights =
         return self.params
 
     def ip(self):
         return ray.services.get_node_ip_address()
-
-# def create_ps(weight_shard: np.ndarray):
-#     RemotePS = ray.remote(ParameterServer)
-#     return RemotePS.remote(weight_shard)
 
 
 class ShardedPS():
     def __init__(self, weights, ps_count):
         self.ps_dict = {}
 
-        # populate indices
-        # name_sorted_keys = list(sorted(weight_dict))
-        # size_sorted_weights = list(sorted(
-        #     weight_dict, key=lambda k: -len(weight_dict[k].flatten())))
-        # size = {i: 0 for i in range(ps_count)}
-        # for k in size_sorted_weights:
-        #     wsize = len(weight_dict[k].flatten())
-        #     min_ps_idx = min(size, key=lambda j: size[j])
-        #     size[min_ps_idx] += wsize
-        #     self.indices[min_ps_idx].append(name_sorted_keys.index(k))
-
-        # start pss
         for ps_id, weight_shard in enumerate(shard(weights, ps_count)):
-            # keys = [name_sorted_keys[i] for i in self.get_indices(ps_id)]
             self.ps_dict[ps_id] = ParameterServer.remote(weight_shard, ps_id)
 
     def update(self, sharded_deltas: list):
@@ -75,7 +55,6 @@ class PSOptimizer(Optimizer):
 
     def step(self):
         # send deltas to parameter servers
-        # import ipdb; ipdb.set_trace()
         weight_ids = self.ps.get_weight_ids()
         worker_to_shard = {}
         shard_to_worker = {}
@@ -111,7 +90,6 @@ if __name__ == '__main__':
     logdir = "/tmp/shard"
 
     local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
-    # RemoteEAEvaluator = setup_sharded(len(local_evaluator.policy.get_weights()))
     RemoteEAEvaluator = setup_sharded(config["ps_count"])
 
     remotes = [RemoteEAEvaluator.remote(
