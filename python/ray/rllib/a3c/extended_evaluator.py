@@ -22,8 +22,8 @@ class ShardA3CEvaluator(A3CEvaluator):
             try:
                 import psutil
                 p = psutil.Process()
-                p.set_cpu_affinity([ps_id])
-                print("Setting CPU Affinity to: ", ps_id)
+                p.cpu_affinity([pin_id])
+                print("Setting CPU Affinity to: ", pin_id)
             except Exception as e:
                 print(e)
                 pass

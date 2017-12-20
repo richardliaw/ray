@@ -11,7 +11,7 @@ class ParameterServer(object):
         try:
             import psutil
             p = psutil.Process()
-            p.set_cpu_affinity([ps_id])
+            p.cpu_affinity([ps_id])
             print("Setting CPU Affinity to: ", ps_id)
         except Exception as e:
             print(e)
@@ -21,7 +21,6 @@ class ParameterServer(object):
         print(self.params.shape)
 
     def update_and_get_weights(self, deltas):
-        print(sum(deltas), self.params.shape)
         self.params += deltas
         return self.get_weights()
 
@@ -98,18 +97,17 @@ class PSOptimizer(Optimizer):
             shards = w.compute_deltas.remote(*weight_ids)
             worker_to_shard[w] = shards
             shard_to_worker.update({t: w for t in shards})
-            print(shard_to_worker)
 
 
 if __name__ == '__main__':
     from ray.rllib.a3c import DEFAULT_CONFIG
     import gym
     ray.init()
-    env_creator = lambda: gym.make("CartPole-v0")
+    env_creator = lambda: gym.make("Pong-v0")
     config = DEFAULT_CONFIG.copy()
-    config["use_lstm"] = False
-    config["ps_count"] = 6
-    config["num_workers"] = 3
+    # config["use_lstm"] = False
+    config["ps_count"] = 10
+    config["num_workers"] = 20
     logdir = "/tmp/shard"
 
     local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
