@@ -15,6 +15,21 @@ from ray.rllib.utils.process_rollout import process_rollout
 
 class ShardA3CEvaluator(A3CEvaluator):
 
+    def __init__(self, env_creator, config, logdir, pin_id=None):
+        super(ShardA3CEvaluator, self).__init__(env_creator, config, logdir)
+
+        if pin_id:
+            try:
+                import psutil
+                p = psutil.Process()
+                p.set_cpu_affinity([ps_id])
+                print("Setting CPU Affinity to: ", ps_id)
+            except Exception as e:
+                print(e)
+                pass
+
+
+
     def compute_deltas(self, *shards): # NEED object IDs
         old_weights = reconstruct_weights(shards)
         self.set_flat(old_weights)

@@ -5,8 +5,18 @@ from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, s
 
 @ray.remote
 class ParameterServer(object):
-    def __init__(self, weight_shard: np.ndarray):
+    def __init__(self, weight_shard: np.ndarray, ps_id):
         # self.params = {k: v.copy() for k, v in weight_shard}
+        self.ps_id = ps_id
+        try:
+            import psutil
+            p = psutil.Process()
+            p.set_cpu_affinity([ps_id])
+            print("Setting CPU Affinity to: ", ps_id)
+        except Exception as e:
+            print(e)
+            pass
+
         self.params = weight_shard.copy()
         print(self.params.shape)
 
@@ -46,7 +56,7 @@ class ShardedPS():
         # start pss
         for ps_id, weight_shard in enumerate(shard(weights, ps_count)):
             # keys = [name_sorted_keys[i] for i in self.get_indices(ps_id)]
-            self.ps_dict[ps_id] = ParameterServer.remote(weight_shard)
+            self.ps_dict[ps_id] = ParameterServer.remote(weight_shard, ps_id)
 
     def update(self, sharded_deltas: list):
         weight_ids = []
@@ -106,8 +116,9 @@ if __name__ == '__main__':
     # RemoteEAEvaluator = setup_sharded(len(local_evaluator.policy.get_weights()))
     RemoteEAEvaluator = setup_sharded(config["ps_count"])
 
-    remotes = [RemoteEAEvaluator.remote(env_creator, config, logdir)
-                    for i in range(config["num_workers"])]
+    remotes = [RemoteEAEvaluator.remote(
+        env_creator, config, logdir,
+        pin_id=(config["ps_count"] + i)) for i in range(config["num_workers"])]
     optimizer = PSOptimizer(config, local_evaluator, remotes)
 
     optimizer.step()
