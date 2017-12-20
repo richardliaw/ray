@@ -75,7 +75,9 @@ class PSOptimizer(Optimizer):
             worker_to_shard[w] = shards
             shard_to_worker.update({t: w for t in shards})
 
-        for i in range(10):
+        ray.wait(list(shard_to_worker), num_returns=len(shard_to_worker))
+
+        for i in range(100):
             [done_shard], _ = ray.wait(list(shard_to_worker))
             w = shard_to_worker[done_shard]
 
@@ -97,7 +99,7 @@ if __name__ == '__main__':
     config = DEFAULT_CONFIG.copy()
     config["use_lstm"] = False
     config["ps_count"] = 6
-    config["num_workers"] = 2
+    config["num_workers"] = 3
     logdir = "/tmp/shard"
 
     local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
