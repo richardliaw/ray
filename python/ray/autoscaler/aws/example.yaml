@@ -61,13 +61,13 @@ head_init_commands:
     # Note: if you're developing Ray, you probably want to create an AMI that
     # has your Ray repo pre-cloned. Then, you can replace the pip installs
     # below with a git checkout <your_sha> (and possibly a recompile).
-    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
-    - yes | ~/anaconda3/bin/conda install boto3=1.4.8  # 1.4.8 adds InstanceMarketOptions
-    - ~/.local/bin/ray stop
-    - ~/.local/bin/ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install boto3==1.4.8  # 1.4.8 adds InstanceMarketOptions
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --head --redis-port=6379 --autoscaling-config=~/ray_bootstrap_config.yaml
 
 # List of shell commands to run to initialize workers.
 worker_init_commands:
-    - pip3 install --user -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp35-cp35m-manylinux1_x86_64.whl
-    - ~/.local/bin/ray stop
-    - ~/.local/bin/ray start --redis-address=$RAY_HEAD_IP:6379
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/f5ea44338eca392df3a868035df3901829cc2ca1/ray-0.3.0-cp36-cp36m-manylinux1_x86_64.whl
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray stop
+    - PATH=/home/ubuntu/anaconda3/bin:$PATH ray start --redis-address=$RAY_HEAD_IP:6379
