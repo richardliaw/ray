@@ -18,15 +18,15 @@ class ShardA3CEvaluator(A3CEvaluator):
     def __init__(self, env_creator, config, logdir, pin_id=None):
         super(ShardA3CEvaluator, self).__init__(env_creator, config, logdir)
 
-        # if pin_id:
-        #     try:
-        #         import psutil
-        #         p = psutil.Process()
-        #         p.cpu_affinity([pin_id])
-        #         print("Setting CPU Affinity to: ", pin_id)
-        #     except Exception as e:
-        #         print(e)
-        #         pass
+        if pin_id:
+            try:
+                import psutil
+                p = psutil.Process()
+                p.cpu_affinity([pin_id])
+                print("Setting CPU Affinity to: ", pin_id)
+            except Exception as e:
+                print(e)
+                pass
 
     def compute_deltas(self, *shards): # NEED object IDs
         """

@@ -7,14 +7,14 @@ from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, s
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, ps_id):
         self.ps_id = ps_id
-        # try:
-        #     import psutil
-        #     p = psutil.Process()
-        #     p.cpu_affinity([ps_id])
-        #     print("Setting CPU Affinity to: ", ps_id)
-        # except Exception as e:
-        #     print(e)
-        #     pass
+        try:
+            import psutil
+            p = psutil.Process()
+            p.cpu_affinity([ps_id])
+            print("Setting CPU Affinity to: ", ps_id)
+        except Exception as e:
+            print(e)
+            pass
 
         self.params = weight_shard.copy()
         print(self.params.shape)

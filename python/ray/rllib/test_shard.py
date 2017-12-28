@@ -36,7 +36,7 @@ RemoteEAEvaluator = setup_sharded(config["ps_count"])
 
 remotes = [RemoteEAEvaluator.remote(
     env_creator, config, logdir,
-    pin_id=(config["ps_count"] + i)) for i in range(config["num_workers"])]
+    pin_id=0) for i in range(config["num_workers"])]
 optimizer = PSOptimizer(config, local_evaluator, remotes)
 
 optimizer.step()
