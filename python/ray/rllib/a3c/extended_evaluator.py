@@ -47,11 +47,13 @@ class ShardA3CEvaluator(A3CEvaluator):
         return self.policy.variables.set_flat(weights)
 
 
-def setup_sharded(num_shards):
+def setup_sharded(num_shards, force=False):
     ShardA3CEvaluator.compute_deltas = ray.method(
         num_return_vals=num_shards)(ShardA3CEvaluator.compute_deltas)
-
-    return ray.remote(ShardA3CEvaluator)
+    if force:
+        return ray.remote(num_gpus=1)(ShardA3CEvaluator)
+    else:
+        return ray.remote(ShardA3CEvaluator)
 
 def shard(array, num):
     rets = np.array_split(array, num)

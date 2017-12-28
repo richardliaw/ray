@@ -20,6 +20,8 @@ parser.add_argument("--num-workers", default=1, type=int,
                     help="Number of workers.")
 parser.add_argument("--shards", default=1, type=int,
                     help="Number of GPUs to allocate to Ray.")
+parser.add_argument("--force", default=False, type=bool,
+                    help="Force actor placement.")
 
 args = parser.parse_args(sys.argv[1:])
 ray.init(redis_address=args.redis_address)
@@ -32,7 +34,7 @@ config["num_workers"] = args.num_workers
 logdir = "/tmp/shard"
 
 local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
-RemoteEAEvaluator = setup_sharded(config["ps_count"])
+RemoteEAEvaluator = setup_sharded(config["ps_count"], force=args.force)
 
 remotes = [RemoteEAEvaluator.remote(
     env_creator, config, logdir,
