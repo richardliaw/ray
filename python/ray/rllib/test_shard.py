@@ -1,12 +1,12 @@
 from ray.rllib.a3c import DEFAULT_CONFIG
+import sys
 import gym
 import argparse
 
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
-    description="Shard.",
-    epilog=EXAMPLE_USAGE)
+    description="Shard.")
 
 # See also the base parser definition in ray/tune/config_parser.py
 parser.add_argument("--redis-address", default=None, type=str,
