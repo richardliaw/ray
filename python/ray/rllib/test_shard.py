@@ -40,4 +40,4 @@ remotes = [RemoteEAEvaluator.remote(
 optimizer = PSOptimizer(config, local_evaluator, remotes)
 
 optimizer.step()
-import ipdb; ipdb.set_trace()
+# import ipdb; ipdb.set_trace()
