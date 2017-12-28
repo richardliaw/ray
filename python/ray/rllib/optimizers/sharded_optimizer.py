@@ -60,6 +60,8 @@ class PSOptimizer(Optimizer):
         shard_to_worker = {}
         for w in self.remote_evaluators:
             shards = w.compute_deltas.remote(*weight_ids)
+            if not type(shards) is list:
+                shards = [shards]
             worker_to_shard[w] = shards
             shard_to_worker.update({t: w for t in shards})
 
@@ -74,5 +76,7 @@ class PSOptimizer(Optimizer):
             weight_ids = self.ps.update(all_w_shards)
 
             shards = w.compute_deltas.remote(*weight_ids)
+            if not type(shards) is list:
+                shards = [shards]
             worker_to_shard[w] = shards
             shard_to_worker.update({t: w for t in shards})

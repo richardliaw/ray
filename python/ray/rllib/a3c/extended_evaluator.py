@@ -29,6 +29,10 @@ class ShardA3CEvaluator(A3CEvaluator):
         #         pass
 
     def compute_deltas(self, *shards): # NEED object IDs
+        """
+        Returns:
+            delta_shards (list): list of shards
+        """
         old_weights = reconstruct_weights(shards)
         self.set_flat(old_weights)
         grad = self.compute_gradients(self.sample())
@@ -50,7 +54,10 @@ def setup_sharded(num_shards):
     return ray.remote(ShardA3CEvaluator)
 
 def shard(array, num):
-    return np.array_split(array, num)
+    rets = np.array_split(array, num)
+    if len(rets) == 1:
+        return rets[0]
+    return rets
 
 def reconstruct_weights(shards):
     return np.concatenate(shards)
