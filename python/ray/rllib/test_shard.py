@@ -3,6 +3,11 @@ import sys
 import gym
 import argparse
 
+import ray
+import numpy as np
+from ray.rllib.optimizers.optimizer import Optimizer
+from ray.rllib.optimizers.sharded_optimizer import PSOptimizer
+from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
