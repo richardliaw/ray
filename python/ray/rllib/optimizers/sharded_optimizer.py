@@ -7,14 +7,14 @@ from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, s
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, ps_id):
         self.ps_id = ps_id
-        try:
-            import psutil
-            p = psutil.Process()
-            p.cpu_affinity([ps_id])
-            print("Setting CPU Affinity to: ", ps_id)
-        except Exception as e:
-            print(e)
-            pass
+        # try:
+        #     import psutil
+        #     p = psutil.Process()
+        #     p.cpu_affinity([ps_id])
+        #     print("Setting CPU Affinity to: ", ps_id)
+        # except Exception as e:
+        #     print(e)
+        #     pass
 
         self.params = weight_shard.copy()
         print(self.params.shape)
@@ -76,25 +76,3 @@ class PSOptimizer(Optimizer):
             shards = w.compute_deltas.remote(*weight_ids)
             worker_to_shard[w] = shards
             shard_to_worker.update({t: w for t in shards})
-
-
-if __name__ == '__main__':
-    from ray.rllib.a3c import DEFAULT_CONFIG
-    import gym
-    ray.init()
-    env_creator = lambda: gym.make("Pong-v0")
-    config = DEFAULT_CONFIG.copy()
-    # config["use_lstm"] = False
-    config["ps_count"] = 10
-    config["num_workers"] = 20
-    logdir = "/tmp/shard"
-
-    local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
-    RemoteEAEvaluator = setup_sharded(config["ps_count"])
-
-    remotes = [RemoteEAEvaluator.remote(
-        env_creator, config, logdir,
-        pin_id=(config["ps_count"] + i)) for i in range(config["num_workers"])]
-    optimizer = PSOptimizer(config, local_evaluator, remotes)
-
-    optimizer.step()
