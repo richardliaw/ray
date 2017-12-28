@@ -55,8 +55,6 @@ def setup_sharded(num_shards):
 
 def shard(array, num):
     rets = np.array_split(array, num)
-    if len(rets) == 1:
-        return rets[0]
     return rets
 
 def reconstruct_weights(shards):

@@ -20,6 +20,8 @@ class ParameterServer(object):
         print(self.params.shape)
 
     def update_and_get_weights(self, deltas):
+        if type(deltas) is list and len(deltas) == 1:
+            deltas = deltas[0]
         self.params += deltas
         return self.get_weights()
 
