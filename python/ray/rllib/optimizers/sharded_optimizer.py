@@ -3,7 +3,8 @@ import numpy as np
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 
-@ray.remote
+#TODO change to flagged
+@ray.remote(num_gpus=1)
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, ps_id):
         self.ps_id = ps_id

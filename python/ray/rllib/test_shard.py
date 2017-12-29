@@ -5,9 +5,33 @@ import argparse
 
 import ray
 import numpy as np
+from ray.tune.result import TrainingResult
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sharded_optimizer import PSOptimizer
 from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
+
+def get_metrics(remote_evaluators):
+    episode_rewards = []
+    episode_lengths = []
+    metric_lists = [a.get_completed_rollout_metrics.remote()
+                    for a in remote_evaluators]
+    for metrics in metric_lists:
+        for episode in ray.get(metrics):
+            episode_lengths.append(episode.episode_length)
+            episode_rewards.append(episode.episode_reward)
+    avg_reward = (
+        np.mean(episode_rewards) if episode_rewards else float('nan'))
+    avg_length = (
+        np.mean(episode_lengths) if episode_lengths else float('nan'))
+    timesteps = np.sum(episode_lengths) if episode_lengths else 0
+
+    result = TrainingResult(
+        episode_reward_mean=avg_reward,
+        episode_len_mean=avg_length,
+        timesteps_this_iter=timesteps,
+        info={})
+
+    return result
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -26,11 +50,12 @@ parser.add_argument("--force", default=False, type=bool,
 args = parser.parse_args(sys.argv[1:])
 ray.init(redis_address=args.redis_address)
 
-env_creator = lambda: gym.make("Pong-v0")
+env_creator = lambda: gym.make("PongDeterministic-v0")
 config = DEFAULT_CONFIG.copy()
-# config["use_lstm"] = False
+config["use_lstm"] = True
 config["ps_count"] = args.shards
 config["num_workers"] = args.num_workers
+config["preprocessing"]["dim"] = 42
 logdir = "/tmp/shard"
 
 local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
@@ -41,5 +66,7 @@ remotes = [RemoteEAEvaluator.remote(
     pin_id=0) for i in range(config["num_workers"])]
 optimizer = PSOptimizer(config, local_evaluator, remotes)
 
-optimizer.step()
+for i in range(100):
+    optimizer.step()
+    print(get_metrics(remotes))
 # import ipdb; ipdb.set_trace()
