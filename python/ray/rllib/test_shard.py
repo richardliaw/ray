@@ -5,7 +5,7 @@ import argparse
 
 import ray
 import numpy as np
-from ray.tune.result import TrainingResult
+from ray.tune.result import TrainingResult, pretty_print
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.optimizers.sharded_optimizer import PSOptimizer
 from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
@@ -30,6 +30,8 @@ def get_metrics(remote_evaluators):
         episode_len_mean=avg_length,
         timesteps_this_iter=timesteps,
         info={})
+
+    pretty_print(result)
 
     return result
 
@@ -69,5 +71,4 @@ optimizer = PSOptimizer(config, local_evaluator, remotes)
 
 for i in range(100):
     optimizer.step()
-    print(get_metrics(remotes))
 # import ipdb; ipdb.set_trace()
