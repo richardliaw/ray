@@ -55,11 +55,12 @@ config = DEFAULT_CONFIG.copy()
 config["use_lstm"] = True
 config["ps_count"] = args.shards
 config["num_workers"] = args.num_workers
+config["force"] = args.force
 config["preprocessing"]["dim"] = 42
 logdir = "/tmp/shard"
 
 local_evaluator = ShardA3CEvaluator(env_creator, config, logdir)
-RemoteEAEvaluator = setup_sharded(config["ps_count"], force=args.force)
+RemoteEAEvaluator = setup_sharded(config["ps_count"], force=config["force"])
 
 remotes = [RemoteEAEvaluator.remote(
     env_creator, config, logdir,

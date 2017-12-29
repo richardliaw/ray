@@ -3,8 +3,6 @@ import numpy as np
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.a3c.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 
-#TODO change to flagged
-@ray.remote(num_gpus=1)
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, ps_id):
         self.ps_id = ps_id
@@ -34,11 +32,15 @@ class ParameterServer(object):
 
 
 class ShardedPS():
-    def __init__(self, weights, ps_count):
+    def __init__(self, weights, ps_count, force):
         self.ps_dict = {}
 
         for ps_id, weight_shard in enumerate(shard(weights, ps_count)):
-            self.ps_dict[ps_id] = ParameterServer.remote(weight_shard, ps_id)
+            if force:
+                RemoteParamServer = ray.remote(num_gpus=1)(ParameterServer)
+            else:
+                RemoteParamServer = ray.remote(ParameterServer)
+            self.ps_dict[ps_id] = RemoteParamServer.remote(weight_shard, ps_id)
 
     def update(self, sharded_deltas: list):
         weight_ids = []
@@ -54,7 +56,7 @@ class ShardedPS():
 class PSOptimizer(Optimizer):
     def _init(self):
         weights = self.local_evaluator.get_flat()
-        self.ps = ShardedPS(weights, self.config["ps_count"])
+        self.ps = ShardedPS(weights, self.config["ps_count"], self.config["force"])
 
     def step(self):
         # send deltas to parameter servers
