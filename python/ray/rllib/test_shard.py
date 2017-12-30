@@ -31,7 +31,7 @@ def get_metrics(remote_evaluators):
         timesteps_this_iter=timesteps,
         info={})
 
-    pretty_print(result)
+    print(pretty_print(result))
 
     return result
 
