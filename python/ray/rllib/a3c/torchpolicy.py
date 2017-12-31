@@ -41,7 +41,6 @@ class TorchPolicy(Policy):
 
     def compute_gradients(self, samples):
         """_backward generates the gradient in each model parameter.
-        This is taken out.
 
         Args:
             samples: SampleBatch of data needed for gradient calculation.
