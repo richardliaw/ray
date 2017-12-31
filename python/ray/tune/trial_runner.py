@@ -9,6 +9,7 @@ import traceback
 from collections import Counter
 
 from ray.tune import TuneError
+from ray.tune.manager import TuneManager
 from ray.tune.result import pretty_print
 from ray.tune.trial import Trial, Resources
 from ray.tune.trial_scheduler import FIFOScheduler, TrialScheduler
@@ -51,6 +52,7 @@ class TrialRunner(object):
         self._global_time_limit = float(
             os.environ.get("TRIALRUNNER_WALLTIME_LIMIT", float('inf')))
         self._total_time = 0
+        self._manager = TuneManager()
 
     def is_finished(self):
         """Returns whether all trials have finished running."""
@@ -72,7 +74,6 @@ class TrialRunner(object):
         Callers should typically run this method repeatedly in a loop. They
         may inspect or modify the runner's state in between calls to step().
         """
-
         if self._can_launch_more():
             self._launch_trial()
         elif self._running:
@@ -89,6 +90,15 @@ class TrialRunner(object):
                         "There are paused trials, but no more pending "
                         "trials with sufficient resources.")
             raise TuneError("Called step when all trials finished?")
+
+        self._manager.respond_msgs(self)
+
+        if self.is_finished():
+            self._manager.shutdown()
+
+    def get_trial(self, tid):
+        trial = [t for t in self._trials if t.trial_id == tid]
+        return trial[0] if trial else None
 
     def get_trials(self):
         """Returns the list of trials managed by this TrialRunner.
@@ -167,17 +177,20 @@ class TrialRunner(object):
                 # note that we don't return the resources, since they may
                 # have been lost
 
+    def _result_bookkeeping(self, trial, result):
+        trial.result_logger.on_result(result)
+        print("TrainingResult for {}:".format(trial))
+        print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
+        trial.last_result = result
+        self._total_time += result.time_this_iter_s
+
     def _process_events(self):
         [result_id], _ = ray.wait(list(self._running.keys()))
         trial = self._running[result_id]
         del self._running[result_id]
         try:
             result = ray.get(result_id)
-            trial.result_logger.on_result(result)
-            print("TrainingResult for {}:".format(trial))
-            print("  {}".format(pretty_print(result).replace("\n", "\n  ")))
-            trial.last_result = result
-            self._total_time += result.time_this_iter_s
+            self._result_bookkeeping(trial, result)
 
             if trial.should_stop(result):
                 self._scheduler_alg.on_trial_complete(self, trial, result)
@@ -217,6 +230,19 @@ class TrialRunner(object):
             self._committed_resources.gpu - resources.gpu)
         assert self._committed_resources.cpu >= 0
         assert self._committed_resources.gpu >= 0
+
+    def stop_trial(self, trial):
+        if trial.status in [Trial.ERROR, Trial.TERMINATED]:
+            return
+        elif trial.status is Trial.RUNNING:
+            # NOTE: There should only be one...
+            result_id = [rid for rid, t in self._running.items() if t is trial][0]
+            self._running.pop(result_id)
+            result = ray.get(result_id)
+            self._result_bookkeeping(trial, result)
+            self._scheduler_alg.on_trial_complete(self, trial, result)
+
+        self._stop_trial(trial)
 
     def _stop_trial(self, trial, error=False):
         """Only returns resources if resources allocated."""
