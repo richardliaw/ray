@@ -16,16 +16,14 @@ class PartialRollout(object):
     Attributes:
         data (dict): Stores rollout data. All numpy arrays other than
             `observations` and `features` will be squeezed.
-        last_r (float): Value of next state. Used for bootstrapping.
+        last_r (float): Value of next state. Used for bootstrapping advantage
+            estimation.
     """
 
     fields = ["observations", "actions", "rewards", "terminal", "features"]
 
     def __init__(self, extra_fields=None):
-        """Initializers internals. Maintains a `last_r` field
-        in support of partial rollouts, used in bootstrapping advantage
-        estimation.
-
+        """
         Args:
             extra_fields: Optional field for object to keep track.
         """
@@ -39,8 +37,9 @@ class PartialRollout(object):
             self.data[k] += [v]
 
     def extend(self, other_rollout):
-        """Extends internal data structure. Assumes other_rollout contains
-        data that occured afterwards."""
+        """Extends internal data structure.
+
+        Assumes other_rollout contains data that occured afterwards."""
 
         assert not self.is_terminal()
         assert all(k in other_rollout.fields for k in self.fields)
@@ -108,11 +107,11 @@ class AsyncSampler(threading.Thread):
     async = True
 
     def __init__(self, env, policy, obs_filter,
-                 num_local_steps, horizon=None):
+                 num_local_steps, horizon=None, queue_size=5):
         assert getattr(obs_filter, "is_concurrent", False), (
             "Observation Filter must support concurrent updates.")
         threading.Thread.__init__(self)
-        self.queue = queue.Queue(5)
+        self.queue = queue.Queue(queue_size)
         self.metrics_queue = queue.Queue()
         self.num_local_steps = num_local_steps
         self.horizon = horizon

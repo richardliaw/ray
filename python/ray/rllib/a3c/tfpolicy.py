@@ -50,10 +50,10 @@ class TFPolicy(Policy):
         # gradient. Notice that self.ac is a placeholder that is provided
         # externally. adv will contain the advantages, as calculated in
         # process_rollout.
-        self.pi_loss = - tf.reduce_sum(log_prob * self.adv)
+        self.pi_loss = - tf.reduce_mean(log_prob * self.adv)
 
         delta = self.vf - self.r
-        self.vf_loss = 0.5 * tf.reduce_sum(tf.square(delta))
+        self.vf_loss = 0.5 * tf.reduce_mean(tf.square(delta))
         self.entropy = tf.reduce_sum(self.curr_dist.entropy())
         self.loss = (self.pi_loss +
                      self.vf_loss * self.config["vf_loss_coeff"] +
@@ -94,12 +94,3 @@ class TFPolicy(Policy):
 
     def set_weights(self, weights):
         self.variables.set_weights(weights)
-
-    def compute_gradients(self, samples):
-        raise NotImplementedError
-
-    def compute(self, observation):
-        raise NotImplementedError
-
-    def value(self, ob):
-        raise NotImplementedError
