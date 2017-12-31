@@ -6,6 +6,7 @@ import os
 import ray
 import time
 import traceback
+from collections import Counter
 
 from ray.tune import TuneError
 from ray.tune.result import pretty_print
@@ -117,12 +118,22 @@ class TrialRunner(object):
                     self._avail_resources.cpu,
                     self._committed_resources.gpu,
                     self._avail_resources.gpu))
+        statuses = [t.status for t in self._trials]
+        messages.append(
+            "{} Trials :: ".format(len(self._trials)) + 
+            ", ".join(["{}: {}".format(k, v) for k, v in Counter(statuses).items()]))
+        pendings = 0  # limit number of output is 'pending'
         for local_dir in sorted(set([t.local_dir for t in self._trials])):
             messages.append("Result logdir: {}".format(local_dir))
             for t in self._trials:
                 if t.local_dir == local_dir:
+                    if t.status == Trial.PENDING:
+                        if pendings > 15:
+                            continue
+                        else:
+                            pendings += 1
                     messages.append(
-                        " - {}:\t{}".format(t, t.progress_string()))
+                        " - {}:\n\t{}".format(t, t.progress_string()))
         return "\n".join(messages) + "\n"
 
     def has_resources(self, resources):

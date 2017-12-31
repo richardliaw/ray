@@ -44,7 +44,7 @@ class A3CEvaluator(Evaluator):
         self.filters = {"obs_filter": self.obs_filter,
                         "rew_filter": self.rew_filter}
         self.sampler = AsyncSampler(env, self.policy, self.obs_filter,
-                                    config["batch_size"])
+                                    config["batch_size"], queue_size=config["queue_size"])
         if start_sampler and self.sampler.async:
             self.sampler.start()
         self.logdir = logdir

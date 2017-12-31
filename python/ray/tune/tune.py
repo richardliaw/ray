@@ -71,7 +71,7 @@ def run_experiments(experiments, scheduler=None, **ray_args):
             runner.add_trial(trial)
     print(runner.debug_string())
 
-    ray.init(**ray_args)
+    ray.init(redirect_output=True, **ray_args)
 
     while not runner.is_finished():
         runner.step()

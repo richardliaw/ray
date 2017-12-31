@@ -220,6 +220,7 @@ class Trial(object):
             '{} [{}]'.format(
                 self.status, location_string(
                     self.last_result.hostname, self.last_result.pid)),
+            '{} itr'.format(int(self.last_result.training_iteration)),
             '{} s'.format(int(self.last_result.time_total_s)),
             '{} ts'.format(int(self.last_result.timesteps_total))]
 

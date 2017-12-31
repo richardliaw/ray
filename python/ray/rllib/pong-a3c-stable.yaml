@@ -1,0 +1,34 @@
+pong-a3c-stable:
+    env: PongDeterministic-v4
+    run: A3C
+    repeat: 3
+    resources:
+        cpu: 9
+        driver_cpu_limit: 1
+    stop:
+        episode_reward_mean: 15
+        training_iteration: 150
+    config:
+        num_workers: 8
+        queue_size: 
+            grid_search: [1, 3, 5]
+        batch_size: 
+            grid_search: [10, 20, 40]
+        use_lstm: true
+        use_pytorch: false
+        vf_loss_coeff: 0.5
+        entropy_coeff: -0.01
+        gamma: 0.99
+        grad_clip: 
+            grid_search: [1.0, 10.0, 20.0, 40.0]
+        lambda: 1.0
+        lr: 0.0001
+        observation_filter: NoFilter
+        reward_filter: NoFilter
+        model:
+            channel_major: false
+            dim: 42
+            grayscale: true
+            zero_mean: false
+        optimizer:
+            grads_per_step: 1000

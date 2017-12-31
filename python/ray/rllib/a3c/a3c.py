@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
     "num_workers": 4,
     # Size of rollout batch
     "batch_size": 10,
+    # Queue size
+    "queue_size": 5,
     # Use LSTM model - only applicable for image states
     "use_lstm": False,
     # Use PyTorch as backend - no LSTM support
@@ -101,7 +103,7 @@ class A3CAgent(Agent):
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
-            info={})
+            info={"max": np.max(episode_rewards), "min": np.min(episode_rewards)})
 
         return result
 
