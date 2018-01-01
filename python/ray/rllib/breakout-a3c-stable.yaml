@@ -1,13 +1,13 @@
 pong-a3c-stable:
-    env: PongDeterministic-v4
+    env: BreakoutDeterministic-v4
     run: A3C
     repeat: 2
     resources:
         cpu: 9
         driver_cpu_limit: 1
     stop:
-        episode_reward_mean: 15
-        training_iteration: 120
+        episode_reward_mean: 10
+        training_iteration: 150
     config:
         num_workers: 8
         queue_size:
