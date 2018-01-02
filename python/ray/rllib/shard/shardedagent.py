@@ -59,7 +59,9 @@ DEFAULT_CONFIG = {
         "lr": 0.0001,
     },
     # Pins actors to cores
-    "pin": False
+    "pin": False,
+    # This is only here to appease tfpolicy
+    "lr": 0.0001,
 }
 
 
