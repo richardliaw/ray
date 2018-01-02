@@ -15,6 +15,9 @@ from datetime import datetime
 import numpy as np
 import yaml
 
+from ray.ray_constants import AUTOSCALER_MAX_NUM_FAILURES, \
+    AUTOSCALER_MAX_CONCURRENT_LAUNCHES, AUTOSCALER_UPDATE_INTERVAL_S, \
+    AUTOSCALER_HEARTBEAT_TIMEOUT_S
 from ray.autoscaler.node_provider import get_node_provider
 from ray.autoscaler.updater import NodeUpdaterProcess
 from ray.autoscaler.tags import TAG_RAY_LAUNCH_CONFIG, \
@@ -81,12 +84,93 @@ CLUSTER_CONFIG_SCHEMA = {
 }
 
 
-# Abort autoscaling if more than this number of errors are encountered. This
-# is a safety feature to prevent e.g. runaway node launches.
-MAX_NUM_FAILURES = 5
+class LoadMetrics(object):
+    """Container for cluster load metrics.
 
-# Max number of nodes to launch at a time.
-MAX_CONCURRENT_LAUNCHES = 10
+    Metrics here are updated from local scheduler heartbeats. The autoscaler
+    queries these metrics to determine when to scale up, and which nodes
+    can be removed.
+    """
+
+    def __init__(self):
+        self.last_used_time_by_ip = {}
+        self.last_heartbeat_time_by_ip = {}
+        self.static_resources_by_ip = {}
+        self.dynamic_resources_by_ip = {}
+        self.local_ip = services.get_node_ip_address()
+
+    def update(self, ip, static_resources, dynamic_resources):
+        self.static_resources_by_ip[ip] = static_resources
+        self.dynamic_resources_by_ip[ip] = dynamic_resources
+        now = time.time()
+        if ip not in self.last_used_time_by_ip or \
+                static_resources != dynamic_resources:
+            self.last_used_time_by_ip[ip] = now
+        self.last_heartbeat_time_by_ip[ip] = now
+
+    def mark_active(self, ip):
+        self.last_heartbeat_time_by_ip[ip] = time.time()
+
+    def prune_active_ips(self, active_ips):
+        active_ips = set(active_ips)
+        active_ips.add(self.local_ip)
+
+        def prune(mapping):
+            unwanted = set(mapping) - active_ips
+            for unwanted_key in unwanted:
+                del mapping[unwanted_key]
+            if unwanted:
+                print(
+                    "Removed {} stale ip mappings: {} not in {}".format(
+                        len(unwanted), unwanted, active_ips))
+        prune(self.last_used_time_by_ip)
+        prune(self.static_resources_by_ip)
+        prune(self.dynamic_resources_by_ip)
+
+    def approx_workers_used(self):
+        return self._info()["NumNodesUsed"]
+
+    def debug_string(self):
+        return " - {}".format(
+            "\n - ".join(
+                ["{}: {}".format(k, v)
+                 for k, v in sorted(self._info().items())]))
+
+    def _info(self):
+        nodes_used = 0.0
+        resources_used = {}
+        resources_total = {}
+        now = time.time()
+        for ip, max_resources in self.static_resources_by_ip.items():
+            avail_resources = self.dynamic_resources_by_ip[ip]
+            max_frac = 0.0
+            for resource_id, amount in max_resources.items():
+                used = amount - avail_resources[resource_id]
+                if resource_id not in resources_used:
+                    resources_used[resource_id] = 0.0
+                    resources_total[resource_id] = 0.0
+                resources_used[resource_id] += used
+                resources_total[resource_id] += amount
+                assert used >= 0
+                if amount > 0:
+                    frac = used / float(amount)
+                    if frac > max_frac:
+                        max_frac = frac
+            nodes_used += max_frac
+        idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        return {
+            "ResourceUsage": ", ".join([
+                "{}/{} {}".format(
+                    round(resources_used[rid], 2),
+                    round(resources_total[rid], 2), rid)
+                for rid in sorted(resources_used)]),
+            "NumNodesConnected": len(self.static_resources_by_ip),
+            "NumNodesUsed": round(nodes_used, 2),
+            "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
+                int(np.min(idle_times)) if idle_times else -1,
+                int(np.mean(idle_times)) if idle_times else -1,
+                int(np.max(idle_times)) if idle_times else -1),
+        }
 
 # Interval at which to perform autoscaling updates.
 UPDATE_INTERVAL_S = 5
@@ -204,10 +288,11 @@ class StandardAutoscaler(object):
 
     def __init__(
             self, config_path, load_metrics,
-            max_concurrent_launches=MAX_CONCURRENT_LAUNCHES,
-            max_failures=MAX_NUM_FAILURES, process_runner=subprocess,
-            verbose_updates=False, node_updater_cls=NodeUpdaterProcess,
-            update_interval_s=UPDATE_INTERVAL_S):
+            max_concurrent_launches=AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            max_failures=AUTOSCALER_MAX_NUM_FAILURES,
+            process_runner=subprocess, verbose_updates=False,
+            node_updater_cls=NodeUpdaterProcess,
+            update_interval_s=AUTOSCALER_UPDATE_INTERVAL_S):
         self.config_path = config_path
         self.reload_config(errors_fatal=True)
         self.load_metrics = load_metrics
@@ -379,7 +464,7 @@ class StandardAutoscaler(object):
             return
         last_heartbeat_time = self.load_metrics.last_heartbeat_time_by_ip.get(
             self.provider.internal_ip(node_id), 0)
-        if time.time() - last_heartbeat_time < HEARTBEAT_TIMEOUT_S:
+        if time.time() - last_heartbeat_time < AUTOSCALER_HEARTBEAT_TIMEOUT_S:
             return
         print("StandardAutoscaler: Restarting Ray on {}".format(node_id))
         updater = self.node_updater_cls(
