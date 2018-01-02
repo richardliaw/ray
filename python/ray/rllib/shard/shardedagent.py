@@ -52,11 +52,14 @@ DEFAULT_CONFIG = {
     # Arguments to pass to the rllib optimizer
     "optimizer": {
         # Number of gradients applied for each `train` step
-        "grads_per_step": 100,
+        "grads_per_step": 1000,
+        # Number of shards
         "shards": 1,
-        # Forces actor placement by specifying that each needs 1 GPU
-        "force": False
-    }
+    },
+    # Forces actor placement by specifying that each needs 1 GPU
+    "force": False,
+    # Pins actors to cores
+    "pin": False
 }
 
 
@@ -70,7 +73,7 @@ class ShardedAgent(Agent):
             self.registry, self.env_creator, self.config, self.logdir, start_sampler=False)
         RemoteEAEvaluator = setup_sharded(
             self.config["optimizer"]["shards"],
-            force=self.config["optimizer"]["force"])
+            force=self.config["force"])
 
         self.remote_evaluators = [RemoteEAEvaluator.remote(
             self.registry, self.env_creator, self.config, self.logdir)
@@ -79,6 +82,10 @@ class ShardedAgent(Agent):
         self.optimizer = PSOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
+
+        if self.config.get("pin"):
+            [actor.pin.remote(i) for i, actor in
+                list(self.optimizer.ps.ps_dict.values()) + self.remote_evaluators]
 
     def _train(self):
         self.optimizer.step()

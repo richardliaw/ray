@@ -59,6 +59,7 @@ class ShardedPS():
 
 
 class PSOptimizer(Optimizer):
+
     def _init(self):
         weights = self.local_evaluator.get_flat()
         self.ps = ShardedPS(weights, self.config)
