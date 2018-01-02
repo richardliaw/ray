@@ -62,6 +62,7 @@ class ShardedPS():
 class PSOptimizer(Optimizer):
 
     def _init(self):
+        self.setup_timer = TimerStat()
         self.apply_timer = TimerStat()
         self.wait_timer = TimerStat()
         self.dispatch_timer = TimerStat()
@@ -71,14 +72,14 @@ class PSOptimizer(Optimizer):
 
     def step(self):
         # send grads to parameter servers
-        weight_ids = self.ps.get_weight_ids()
-        for w in self.workers:
-            if not w.grads:
-                new_grads = w.compute_flat_grad(weight_ids)
-                w.track_grads(new_grads)
-
-        if self.ps.iter == 0:
-            WorkerQ.wait_for_all(self.workers)
+        with self.setup_timer:
+            if any(not w.grads for w in self.workers):
+                weight_ids = self.ps.get_weight_ids()
+                for w in self.workers:
+                    if not w.grads:
+                        new_grads = w.compute_flat_grad(weight_ids)
+                        w.track_grads(new_grads)
+                WorkerQ.wait_for_all(self.workers)
 
         for i in range(self.config["grads_per_step"]):
             with self.wait_timer:
@@ -95,6 +96,7 @@ class PSOptimizer(Optimizer):
 
     def stats(self):
         return {
+            "setup_time_ms": round(1000 * self.setup_timer.mean, 3),
             "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
             "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
             "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
