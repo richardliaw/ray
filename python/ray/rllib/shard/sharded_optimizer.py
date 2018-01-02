@@ -95,12 +95,17 @@ class PSOptimizer(Optimizer):
                 worker.track_grads(new_grads)
 
     def stats(self):
-        return {
+        cur_stats =  {
             "setup_time_ms": round(1000 * self.setup_timer.mean, 3),
             "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
             "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
             "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
         }
+        self.setup_timer = TimerStat()
+        self.apply_timer = TimerStat()
+        self.wait_timer = TimerStat()
+        self.dispatch_timer = TimerStat()
+        return cur_stats
 
 
 class Worker():
