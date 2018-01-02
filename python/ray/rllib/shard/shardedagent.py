@@ -32,8 +32,6 @@ DEFAULT_CONFIG = {
     "lambda": 1.0,
     # Max global norm for each gradient calculated by worker
     "grad_clip": 40.0,
-    # Learning rate
-    "lr": 0.0001,
     # Value Function Loss coefficient
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
@@ -55,9 +53,11 @@ DEFAULT_CONFIG = {
         "grads_per_step": 1000,
         # Number of shards
         "shards": 1,
+        # Forces actor placement by specifying that each needs 1 GPU
+        "force": False,
+        # Learning rate
+        "lr": 0.0001,
     },
-    # Forces actor placement by specifying that each needs 1 GPU
-    "force": False,
     # Pins actors to cores
     "pin": False
 }
@@ -73,7 +73,7 @@ class ShardedAgent(Agent):
             self.registry, self.env_creator, self.config, self.logdir, start_sampler=False)
         RemoteEAEvaluator = setup_sharded(
             self.config["optimizer"]["shards"],
-            force=self.config["force"])
+            force=self.config["optimizer"]["force"])
 
         self.remote_evaluators = [RemoteEAEvaluator.remote(
             self.registry, self.env_creator, self.config, self.logdir)

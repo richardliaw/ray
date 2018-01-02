@@ -50,6 +50,10 @@ parser.add_argument(
 
 
 if __name__ == "__main__":
+    from ray.tune.registry import register_trainable
+    from ray.rllib.shard.shardedagent import ShardedAgent
+
+    register_trainable("ShardedAgent", ShardedAgent)
     args = parser.parse_args(sys.argv[1:])
     if args.config_file:
         with open(args.config_file) as f:
