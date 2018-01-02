@@ -3,6 +3,7 @@ import numpy as np
 from ray.rllib.optimizers.optimizer import Optimizer
 from ray.rllib.shard.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 from ray.rllib.shard.gdoptimizers import Adam
+from ray.rllib.utils.timer import TimerStat
 
 class ParameterServer(object):
     def __init__(self, weight_shard: np.ndarray, config):
@@ -61,6 +62,9 @@ class ShardedPS():
 class PSOptimizer(Optimizer):
 
     def _init(self):
+        self.apply_timer = TimerStat()
+        self.wait_timer = TimerStat()
+        self.dispatch_timer = TimerStat()
         weights = self.local_evaluator.get_flat()
         self.ps = ShardedPS(weights, self.config)
         self.workers = [Worker(remote_eval) for remote_eval in self.remote_evaluators]
@@ -69,17 +73,31 @@ class PSOptimizer(Optimizer):
         # send grads to parameter servers
         weight_ids = self.ps.get_weight_ids()
         for w in self.workers:
-            new_grads = w.compute_flat_grad(weight_ids)
-            w.track_grads(new_grads)
+            if not w.grads:
+                new_grads = w.compute_flat_grad(weight_ids)
+                w.track_grads(new_grads)
 
         WorkerQ.wait_for_all(self.workers)
 
         for i in range(self.config["grads_per_step"]):
-            worker = WorkerQ.next_completed(self.workers)
-            new_weights = self.ps.update(worker.grads)
-            new_grads = worker.compute_flat_grad(new_weights)
-            worker.weight_iter = self.ps.iter
-            worker.track_grads(new_grads)
+            with self.wait_timer:
+                worker = WorkerQ.next_completed(self.workers)
+                # try just dropping things that are too late
+
+            with self.apply_timer:
+                new_weights = self.ps.update(worker.grads)
+
+            with self.dispatch_timer:
+                new_grads = worker.compute_flat_grad(new_weights)
+                worker.weight_iter = self.ps.iter
+                worker.track_grads(new_grads)
+
+    def stats(self):
+        return {
+            "wait_time_ms": round(1000 * self.wait_timer.mean, 3),
+            "apply_time_ms": round(1000 * self.apply_timer.mean, 3),
+            "dispatch_time_ms": round(1000 * self.dispatch_timer.mean, 3),
+        }
 
 
 class Worker():
