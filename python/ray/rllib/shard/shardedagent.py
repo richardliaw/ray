@@ -87,7 +87,7 @@ class ShardedAgent(Agent):
 
         if self.config.get("pin"):
             [actor.pin.remote(i) for i, actor in
-                list(self.optimizer.ps.ps_dict.values()) + self.remote_evaluators]
+                enumerate(list(self.optimizer.ps.ps_dict.values()) + self.remote_evaluators)]
 
     def _train(self):
         self.optimizer.step()
