@@ -84,6 +84,14 @@ def run_experiments(experiments, scheduler=None, **ray_args):
     return runner.get_trials()
 
 
+from ray.tune.registry import register_trainable
+from ray.rllib.shard.shardedagent import ShardedAgent
+
+register_trainable("ShardedAgent", ShardedAgent)
+
+
+
+
 if __name__ == "__main__":
     import yaml
     args = parser.parse_args(sys.argv[1:])
