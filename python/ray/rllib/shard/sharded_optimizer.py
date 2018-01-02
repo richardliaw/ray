@@ -77,7 +77,8 @@ class PSOptimizer(Optimizer):
                 new_grads = w.compute_flat_grad(weight_ids)
                 w.track_grads(new_grads)
 
-        WorkerQ.wait_for_all(self.workers)
+        if self.ps.iter == 0:
+            WorkerQ.wait_for_all(self.workers)
 
         for i in range(self.config["grads_per_step"]):
             with self.wait_timer:
