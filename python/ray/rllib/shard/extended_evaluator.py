@@ -13,31 +13,33 @@ from ray.rllib.utils.process_rollout import process_rollout
 
 class ShardA3CEvaluator(A3CEvaluator):
 
-    def __init__(self, registry, env_creator, config, logdir, pin_id=None, start_sampler=True):
+    def __init__(self, registry, env_creator, config, logdir, start_sampler=True):
         super(ShardA3CEvaluator, self).__init__(
             registry, env_creator, config, logdir, start_sampler)
 
-        if pin_id:
-            try:
-                import psutil
-                p = psutil.Process()
-                p.cpu_affinity([pin_id])
-                print("Setting CPU Affinity to: ", pin_id)
-            except Exception as e:
-                print(e)
-                pass
+        shape = lambda tensor: tuple(tensor.get_shape().as_list())
+        assert all(shape(v) == shape(g) for v, g in zip(
+            self.policy.variables.variables.values(), self.policy.grads))
 
-    def compute_deltas(self, *shards): # NEED object IDs
-        """
+    def compute_flat_grad(self, *shards): # NEED object IDs
+        """Fuses set_weights and compute_gradients for shards.
         Returns:
             delta_shards (list): list of shards
         """
         old_weights = reconstruct_weights(shards)
         self.set_flat(old_weights)
-        grad = self.compute_gradients(self.sample())
-        self.apply_gradients(grad)
-        new_weights = self.get_flat()
-        return shard(new_weights - old_weights, len(shards))
+        grads = super(ShardA3CEvaluator, self).compute_gradients(self.sample())
+        flattened = np.concatenate([g.flatten() for g in grads])
+        return shard(flattened, len(shards))
+
+    def pin(self, cpu_id):
+        try:
+            import psutil
+            p = psutil.Process()
+            p.cpu_affinity([cpu_id])
+            print("Setting CPU Affinity to: ", cpu_id)
+        except Exception as e:
+            print(e)
 
     def get_flat(self):
         return self.policy.variables.get_flat()
@@ -47,8 +49,8 @@ class ShardA3CEvaluator(A3CEvaluator):
 
 
 def setup_sharded(num_shards, force=False):
-    ShardA3CEvaluator.compute_deltas = ray.method(
-        num_return_vals=num_shards)(ShardA3CEvaluator.compute_deltas)
+    ShardA3CEvaluator.compute_flat_grad = ray.method(
+        num_return_vals=num_shards)(ShardA3CEvaluator.compute_flat_grad)
     if force:
         return ray.remote(num_gpus=1)(ShardA3CEvaluator)
     else:

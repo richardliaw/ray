@@ -30,9 +30,8 @@ config["use_lstm"] = True
 config["optimizer"]["shards"] = args.shards
 config["num_workers"] = args.num_workers
 config["optimizer"]["force"] = args.force
+config["optimizer"]["lr"] = config["lr"]
 config["model"]["dim"] = 42
 
 agent = ShardedAgent(config, "PongDeterministic-v0")
 res = agent.train()
-print("Iteration", res.training_iteration)
-print("  {}".format(pretty_print(res).replace("\n", "\n  ")))

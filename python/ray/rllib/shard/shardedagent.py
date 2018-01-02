@@ -73,8 +73,9 @@ class ShardedAgent(Agent):
             force=self.config["optimizer"]["force"])
 
         self.remote_evaluators = [RemoteEAEvaluator.remote(
-            self.registry, self.env_creator, self.config, self.logdir, pin_id=0)
+            self.registry, self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
+
         self.optimizer = PSOptimizer(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
@@ -106,7 +107,6 @@ class ShardedAgent(Agent):
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
             info={})
-
         return result
 
     def _save(self):
