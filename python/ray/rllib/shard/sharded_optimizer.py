@@ -73,7 +73,7 @@ class PSOptimizer(Optimizer):
     def step(self):
         # send grads to parameter servers
         with self.setup_timer:
-            if any(not w.grads for w in self.workers):
+            if any(len(w.grads) == 0 for w in self.workers):
                 weight_ids = self.ps.get_weight_ids()
                 for w in self.workers:
                     if not w.grads:
