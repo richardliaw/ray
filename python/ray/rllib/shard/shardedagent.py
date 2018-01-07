@@ -93,7 +93,6 @@ class ShardedAgent(Agent):
         self.optimizer.step()
         # FilterManager.synchronize(
         #     self.local_evaluator.filters, self.remote_evaluators)
-        print(self.optimizer.stats())
         res = self._fetch_metrics_from_remote_evaluators()
         return res
 
@@ -116,6 +115,7 @@ class ShardedAgent(Agent):
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
+            mean_loss=np.max(episode_rewards)
             info={**self.optimizer.stats()})
         return result
 

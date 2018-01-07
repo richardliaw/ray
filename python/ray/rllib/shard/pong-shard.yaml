@@ -4,6 +4,8 @@ pong-a3c:
     resources:
         cpu: 29
         driver_cpu_limit: 1
+    stop:
+        mean_loss: 21.0
     config:
         num_workers: 20
         batch_size: 20
