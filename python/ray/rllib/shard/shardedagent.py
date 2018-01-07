@@ -115,7 +115,7 @@ class ShardedAgent(Agent):
             episode_reward_mean=avg_reward,
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
-            mean_loss=np.max(episode_rewards)
+            mean_loss=np.max(episode_rewards),
             info={**self.optimizer.stats()})
         return result
 
