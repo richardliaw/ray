@@ -86,6 +86,7 @@ class PSOptimizer(Optimizer):
 
     def step(self):
         # send grads to parameter servers
+        self.alive_workers = set()
         with self.timers["setup"]:
             if any(len(w.grads) == 0 for w in self.workers):
                 weight_ids = self.ps.get_weight_ids()
@@ -98,6 +99,7 @@ class PSOptimizer(Optimizer):
         for i in range(self.config["grads_per_step"]):
             with self.timers["wait"]:
                 worker = WorkerQ.next_completed(self.workers)
+                self.alive_workers.add(worker)
                 # try just dropping things that are too late
 
             with self.timers["apply_call"]:
@@ -111,6 +113,7 @@ class PSOptimizer(Optimizer):
     def stats(self):
         stats = {k + "_ms": round(1000 * v.mean, 3) for k, v in self.timers.items()}
         stats.update(self.ps.stats())
+        stats["alive"] = len(self.alive_workers)
         self.timers = {k: TimerStat() for k in self.timers}
         return stats
 
