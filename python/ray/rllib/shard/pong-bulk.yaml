@@ -1,0 +1,34 @@
+pong-bulk:
+    env: PongDeterministic-v4
+    run: ShardedAgent
+    repeat: 5
+    resources:
+        cpu: 60
+        driver_cpu_limit: 1
+        gpu: 1
+    stop:
+        mean_loss: 21.0
+    config:
+        num_workers: 
+            grid_search: [35, 40, 45, 47]
+        batch_size: 20
+        use_lstm: true
+        use_pytorch: false
+        vf_loss_coeff: 0.5
+        entropy_coeff: -0.01
+        gamma: 0.99
+        grad_clip: 40.0
+        lambda: 1.0
+        observation_filter: NoFilter
+        reward_filter: NoFilter
+        pin: True
+        model:
+            channel_major: false
+            dim: 42
+            grayscale: true
+            zero_mean: false
+        optimizer:
+            lr: 0.0001
+            grads_per_step: 1000
+            force: false
+            shards: 15
