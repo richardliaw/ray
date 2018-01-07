@@ -93,6 +93,7 @@ class ShardedAgent(Agent):
         self.optimizer.step()
         # FilterManager.synchronize(
         #     self.local_evaluator.filters, self.remote_evaluators)
+        print(self.optimizer.stats())
         res = self._fetch_metrics_from_remote_evaluators()
         return res
 
