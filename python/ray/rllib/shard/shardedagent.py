@@ -8,7 +8,7 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
-from ray.rllib.shard.sharded_optimizer import PSOptimizer
+from ray.rllib.shard.sharded_optimizer import PSOptimizer, DriverlessPSOptimizer
 from ray.rllib.shard.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 from ray.tune.result import TrainingResult, pretty_print
 
@@ -60,8 +60,9 @@ DEFAULT_CONFIG = {
     },
     # Pins actors to cores
     "pin": False,
-    # This is only here to appease tfpolicy
+    # This is only here to appease a3c/tfpolicy
     "lr": 0.0001,
+    "selfdriving": False
 }
 
 
@@ -81,7 +82,11 @@ class ShardedAgent(Agent):
             self.registry, self.env_creator, self.config, self.logdir)
             for i in range(self.config["num_workers"])]
 
-        self.optimizer = PSOptimizer(
+        if self.config["selfdriving"]:
+            opt_class = DriverlessPSOptimizer
+        else:
+            opt_class = PSOptimizer
+        self.optimizer = opt_classt(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
