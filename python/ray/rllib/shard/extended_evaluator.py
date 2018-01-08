@@ -10,6 +10,7 @@ from ray.rllib.a3c.a3c_evaluator import A3CEvaluator
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.process_rollout import process_rollout
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.shard.utils import shard, PSClient
 
 
 class ShardA3CEvaluator(A3CEvaluator):
