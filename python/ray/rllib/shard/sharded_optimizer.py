@@ -65,6 +65,7 @@ class ShardedPS():
         weight_ids = []
         for ps_id, weight_shard in enumerate(sharded_grads):
             weight_ids.append(
+                # for some reason this is hogging...
                 self.ps_dict[ps_id].update_and_get_weights.remote(weight_shard))
         return weight_ids
 
@@ -74,6 +75,10 @@ class ShardedPS():
     def stats(self):
         df =  DataFrame(ray.get([ps.stats.remote() for ps in self.ps_dict.values()]))
         return dict(df.mean())
+
+class PSClient():
+    def __init__(self, ps_dict):
+        self.ps_dict = ps_dict
 
 
 class PSOptimizer(Optimizer):
@@ -136,6 +141,9 @@ class Worker():
     def compute_flat_grad(self, weight_list: list):
         return self._eval.compute_flat_grad.remote(*weight_list)
 
+    def loop(self, ps_dict, iterations):
+        return self._eval.loop.remote(ps_dict, iteration)
+
 
 class WorkerQ():
     @staticmethod
@@ -156,4 +164,12 @@ class WorkerQ():
     def wait_for_all(workers):
         all_objs = [k for w in workers for k in w.grads]
         ray.wait(all_objs, num_returns=len(all_objs))
+
+
+class DriverlessPSOptimizer(PSOptimizer):
+
+    def step(self):
+        iters = int(self.config["grads_per_step"] / len(self.workers))
+        ray.get([w.loop(self.ps.ps_dict, iters) for w in self.workers])
+
 

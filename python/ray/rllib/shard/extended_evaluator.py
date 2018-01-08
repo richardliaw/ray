@@ -21,14 +21,15 @@ class ShardA3CEvaluator(A3CEvaluator):
         shape = lambda tensor: tuple(tensor.get_shape().as_list())
         assert all(shape(v) == shape(g) for v, g in zip(
             self.policy.variables.variables.values(), self.policy.grads))
-        self.grad_timer = TimerStat()
+        self.timers = {}
+        self.timers["grad"] = TimerStat()
 
     def compute_flat_grad(self, *shards): # NEED object IDs
         """Fuses set_weights and compute_gradients for shards.
         Returns:
             delta_shards (list): list of shards
         """
-        with self.grad_timer:
+        with self.timers["grad"]:
             old_weights = reconstruct_weights(shards)
             self.set_flat(old_weights)
             grads = super(ShardA3CEvaluator, self).compute_gradients(self.sample())
@@ -50,12 +51,20 @@ class ShardA3CEvaluator(A3CEvaluator):
     def set_flat(self, weights):
         return self.policy.variables.set_flat(weights)
 
-    # def stats(self):
-    #     stats =  {
-    #         "setup_time_ms": round(1000 * self.grad_timer.mean, 3)}
+    def stats(self):
 
-    #     self.grad_timer = TimerStat()
-    #     return stats
+        stats = {k + "_ms": round(1000 * v.mean, 3) for k, v in self.timers.items()}
+        self.timers["grad"] = TimerStat()
+        return stats
+
+    def loop(self, ps_dict, iterations=100):
+        ps = PSClient(ps_dict)
+        shard_ids = = ps.get_weights()
+        for i in range(iterations):
+            shards = ray.get(shard_ids)
+            deltas = self.compute_flad_grad(*shards)
+            shard_ids = ps.update(deltas)
+
 
 
 
