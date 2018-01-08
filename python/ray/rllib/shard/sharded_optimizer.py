@@ -142,7 +142,7 @@ class Worker():
         return self._eval.compute_flat_grad.remote(*weight_list)
 
     def loop(self, ps_dict, iterations):
-        return self._eval.loop.remote(ps_dict, iteration)
+        return self._eval.loop.remote(ps_dict, iterations)
 
 
 class WorkerQ():

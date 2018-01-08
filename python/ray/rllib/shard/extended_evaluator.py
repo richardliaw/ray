@@ -59,7 +59,7 @@ class ShardA3CEvaluator(A3CEvaluator):
 
     def loop(self, ps_dict, iterations=100):
         ps = PSClient(ps_dict)
-        shard_ids = = ps.get_weights()
+        shard_ids = ps.get_weights()
         for i in range(iterations):
             shards = ray.get(shard_ids)
             deltas = self.compute_flad_grad(*shards)

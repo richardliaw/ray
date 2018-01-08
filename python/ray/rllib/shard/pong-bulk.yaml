@@ -1,17 +1,19 @@
 pong-bulk:
     env: PongDeterministic-v4
     run: ShardedAgent
-    repeat: 5
+    repeat: 3
     resources:
         cpu: 60
         driver_cpu_limit: 1
         gpu: 1
     stop:
         mean_loss: 21.0
+        time_total_s: 1200
     config:
         num_workers: 
-            grid_search: [35, 40, 45, 47]
-        batch_size: 20
+            grid_search: [25, 30, 35]
+        batch_size: 
+            grid_search: [10, 15, 20]
         use_lstm: true
         use_pytorch: false
         vf_loss_coeff: 0.5
@@ -31,4 +33,4 @@ pong-bulk:
             lr: 0.0001
             grads_per_step: 1000
             force: false
-            shards: 15
+            shards: 12

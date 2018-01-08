@@ -86,7 +86,7 @@ class ShardedAgent(Agent):
             opt_class = DriverlessPSOptimizer
         else:
             opt_class = PSOptimizer
-        self.optimizer = opt_classt(
+        self.optimizer = opt_class(
             self.config["optimizer"], self.local_evaluator,
             self.remote_evaluators)
 
