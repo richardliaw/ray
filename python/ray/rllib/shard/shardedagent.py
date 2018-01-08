@@ -8,8 +8,9 @@ import os
 
 import ray
 from ray.rllib.agent import Agent
+from ray.rllib.shard.utils import shard
 from ray.rllib.shard.sharded_optimizer import PSOptimizer, DriverlessPSOptimizer
-from ray.rllib.shard.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
+from ray.rllib.shard.extended_evaluator import ShardA3CEvaluator, setup_sharded
 from ray.tune.result import TrainingResult, pretty_print
 
 

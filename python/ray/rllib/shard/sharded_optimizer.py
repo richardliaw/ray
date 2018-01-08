@@ -1,8 +1,8 @@
 import ray
 import numpy as np
 from ray.rllib.optimizers.optimizer import Optimizer
-from ray.rllib.shard.extended_evaluator import ShardA3CEvaluator, setup_sharded, shard
 from ray.rllib.shard.gdoptimizers import Adam
+from ray.rllib.shard.utils import shard
 from ray.rllib.utils.timer import TimerStat
 from pandas import DataFrame
 

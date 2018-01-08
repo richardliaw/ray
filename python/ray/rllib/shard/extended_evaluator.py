@@ -76,10 +76,6 @@ def setup_sharded(num_shards, force=False):
     else:
         return ray.remote(ShardA3CEvaluator)
 
-def shard(array, num):
-    rets = np.array_split(array, num)
-    return rets
-
 def reconstruct_weights(shards):
     return np.concatenate(shards)
 
