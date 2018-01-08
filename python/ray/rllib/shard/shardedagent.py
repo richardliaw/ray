@@ -93,6 +93,14 @@ class ShardedAgent(Agent):
         if self.config.get("pin"):
             [actor.pin.remote(i) for i, actor in
                 enumerate(list(self.optimizer.ps.ps_dict.values()) + self.remote_evaluators)]
+            last = self.config["optimizer"]["shards"] + self.config["num_workers"]
+            try:
+                import psutil
+                p = psutil.Process()
+                p.cpu_affinity([last])
+                print("Setting CPU Affinity to: ", last)
+            except Exception as e:
+                print(e)
 
     def _train(self):
         self.optimizer.step()
