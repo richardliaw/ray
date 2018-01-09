@@ -103,6 +103,9 @@ class ShardedAgent(Agent):
             except Exception as e:
                 print(e)
 
+        if self.config["selfdriving"]:
+            self.optimizer.create_ps_clients()
+
     def _train(self):
         self.optimizer.step()
         # FilterManager.synchronize(

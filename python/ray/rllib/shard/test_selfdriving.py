@@ -37,5 +37,6 @@ config["optimizer"]["force"] = args.force
 config["model"]["dim"] = 42
 
 agent = ShardedAgent(config, "PongDeterministic-v0")
-for i in range(2):
+for i in range(4):
     res = agent.train()
+    print(res)

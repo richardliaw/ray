@@ -3,6 +3,7 @@ import numpy as np
 import ray
 from ray.rllib.shard.gdoptimizers import Adam
 from ray.rllib.utils.timer import TimerStat
+from pandas import DataFrame
 
 def shard(array, num):
     rets = np.array_split(array, num)
