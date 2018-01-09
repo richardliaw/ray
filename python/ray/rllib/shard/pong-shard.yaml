@@ -19,6 +19,7 @@ pong-a3c:
         observation_filter: NoFilter
         reward_filter: NoFilter
         pin: True
+        selfdriving: True
         model:
             channel_major: false
             dim: 42
