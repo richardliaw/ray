@@ -2,15 +2,15 @@ pong-benchmark:
     env: PongDeterministic-v4
     run: ShardedAgent
     resources:
-        cpu: 
-             eval: "spec.config.num_workers + spec.config.optimizer.shards"
+        cpu:
+             eval: "spec.config.num_workers + spec.config.optimizer.shards + 1"
         driver_cpu_limit: 1
-        gpu: 1
+        gpu: 10
     stop:
         mean_loss: 21.0
         training_iteration: 5
     config:
-        num_workers: 
+        num_workers:
              grid_search: [1, 2, 4, 8]
         batch_size: 20
         use_lstm: true
@@ -31,6 +31,6 @@ pong-benchmark:
         optimizer:
             lr: 0.0001
             grads_per_step: 1000
-            force: false
-            shards: 
-                grid_search: [2, 4, 8]
+            force: true
+            shards:
+                grid_search: [2] #, 4, 8]
