@@ -157,7 +157,7 @@ can register a function that creates the env to refer to it by name. For example
     from ray.tune.registry import register_env
     from ray.rllib import ppo
 
-    env_creator = lambda: create_my_env()
+    env_creator = lambda env_config: create_my_env()
     env_creator_name = "custom_env"
     register_env(env_creator_name, env_creator)
 
@@ -183,9 +183,11 @@ custom model and preprocessor classes are documented in the
 
     ray.init()
     alg = ppo.PPOAgent(env="CartPole-v0", config={
-        "custom_preprocessor": "my_prep",
-        "custom_model": "my_model",
-        "custom_options": {},  # extra options to pass to your classes
+        "model": {
+            "custom_preprocessor": "my_prep",
+            "custom_model": "my_model",
+            "custom_options": {},  # extra options to pass to your classes
+        },
     })
 
 Using RLlib with Ray.tune
