@@ -6,6 +6,7 @@ pong-benchmark:
              eval: "spec.config.num_workers + spec.config.optimizer.shards + 1"
         driver_cpu_limit: 1
         gpu: 10
+        driver_gpu_limit: 1
     stop:
         mean_loss: 21.0
         training_iteration: 5
