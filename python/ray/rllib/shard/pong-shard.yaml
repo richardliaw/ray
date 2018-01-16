@@ -24,6 +24,7 @@ pong-benchmark:
         observation_filter: NoFilter
         reward_filter: NoFilter
         selfdriving: True
+        env_config: {}
         model:
             channel_major: false
             dim: 42

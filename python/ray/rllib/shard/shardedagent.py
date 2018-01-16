@@ -63,7 +63,8 @@ DEFAULT_CONFIG = {
     "pin": False,
     # This is only here to appease a3c/tfpolicy
     "lr": 0.0001,
-    "selfdriving": False
+    "selfdriving": False,
+    "env_config": {}
 }
 
 
