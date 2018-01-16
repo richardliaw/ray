@@ -1,13 +1,17 @@
-pong-a3c:
+pong-benchmark:
     env: PongDeterministic-v4
     run: ShardedAgent
     resources:
-        cpu: 29
+        cpu: 
+             eval: "spec.config.num_workers + spec.config.optimizer.shards"
         driver_cpu_limit: 1
+        gpu: 1
     stop:
         mean_loss: 21.0
+        training_iteration: 5
     config:
-        num_workers: 20
+        num_workers: 
+             grid_search: [1, 2, 4, 8]
         batch_size: 20
         use_lstm: true
         use_pytorch: false
@@ -18,7 +22,6 @@ pong-a3c:
         lambda: 1.0
         observation_filter: NoFilter
         reward_filter: NoFilter
-        pin: True
         selfdriving: True
         model:
             channel_major: false
@@ -29,4 +32,5 @@ pong-a3c:
             lr: 0.0001
             grads_per_step: 1000
             force: false
-            shards: 8
+            shards: 
+                grid_search: [2, 4, 8]

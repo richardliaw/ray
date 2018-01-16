@@ -37,6 +37,7 @@ config["optimizer"]["force"] = args.force
 config["model"]["dim"] = 42
 
 agent = ShardedAgent(config, "PongDeterministic-v0")
+from ray.tune.visual_utils import _flatten_dict
 for i in range(4):
     res = agent.train()
-    print(res)
+    print("".join([str(kv) + "\n" for kv in (_flatten_dict(res._asdict()).items())]))
