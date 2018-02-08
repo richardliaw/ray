@@ -139,7 +139,9 @@ class ShardedAgent(Agent):
             timesteps_this_iter=timesteps,
             mean_loss=np.max(episode_rewards),
             time_this_iter_s=float(self.optimizer_timer.mean),
-            info={**self.optimizer.stats()})
+            info={
+                "throughput": self.config["optimizer"]["grads_per_step"] / float(self.optimizer_timer.mean),
+            **self.optimizer.stats()})
         self.optimizer_timer = TimerStat()
         return result
 
