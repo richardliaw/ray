@@ -236,6 +236,9 @@ def get_agent_class(alg):
         return _MockAgent
     elif alg == "__sigmoid_fake_data":
         return _SigmoidFakeData
+    elif alg == "shard":
+        from ray.rllib.shard import ShardedAgent
+        return ShardedAgent
     elif alg == "__parameter_tuning":
         return _ParameterTuningAgent
     else:

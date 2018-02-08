@@ -1,18 +1,17 @@
-pong-benchmark:
+sharded-benchmark:
     env: PongDeterministic-v4
-    run: ShardedAgent
+    run: shard
     resources:
         cpu:
-             eval: "spec.config.num_workers + spec.config.optimizer.shards + 1"
-        driver_cpu_limit: 1
-        gpu: 10
-        driver_gpu_limit: 1
+             eval: "spec.config.num_workers + spec.config.optimizer.shards + 2"
+        # driver_cpu_limit: 1
+        #gpu: 10
+        #driver_gpu_limit: 1
     stop:
-        mean_loss: 21.0
         training_iteration: 5
     config:
         num_workers:
-             grid_search: [1, 2, 4, 8]
+             grid_search: [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 36]
         batch_size: 20
         use_lstm: true
         use_pytorch: false
@@ -23,7 +22,7 @@ pong-benchmark:
         lambda: 1.0
         observation_filter: NoFilter
         reward_filter: NoFilter
-        selfdriving: True
+        selfdriving: False
         env_config: {}
         model:
             channel_major: false
@@ -32,7 +31,7 @@ pong-benchmark:
             zero_mean: false
         optimizer:
             lr: 0.0001
-            grads_per_step: 1000
-            force: true
+            grads_per_step: 2000
+            force: False
             shards:
-                grid_search: [2] #, 4, 8]
+                grid_search: [2, 4, 8, 12]
