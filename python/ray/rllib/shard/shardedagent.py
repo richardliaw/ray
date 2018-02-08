@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import pickle
 import os
+from ray.rllib.utils.timer import TimerStat
 
 import ray
 from ray.rllib.agent import Agent
@@ -107,8 +108,11 @@ class ShardedAgent(Agent):
         if self.config["selfdriving"]:
             self.optimizer.create_ps_clients()
 
+        self.optimizer_timer = TimerStat()
+
     def _train(self):
-        self.optimizer.step()
+        with self.optimizer_timer:
+            self.optimizer.step()
         # FilterManager.synchronize(
         #     self.local_evaluator.filters, self.remote_evaluators)
         res = self._fetch_metrics_from_remote_evaluators()
@@ -134,7 +138,9 @@ class ShardedAgent(Agent):
             episode_len_mean=avg_length,
             timesteps_this_iter=timesteps,
             mean_loss=np.max(episode_rewards),
+            time_this_iter_s=float(self.optimizer_timer.mean),
             info={**self.optimizer.stats()})
+        self.optimizer_timer = TimerStat()
         return result
 
     def _save(self):
