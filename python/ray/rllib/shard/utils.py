@@ -80,6 +80,12 @@ class ShardedPS():
         df =  DataFrame(ray.get([ps.stats.remote() for ps in self.ps_dict.values()]))
         return dict(df.mean())
 
+    def stop(self):
+        terms = [a.__ray_terminate__.remote(a._ray_actor_id.id())
+                        for a in self.ps_dict.values()]
+        # self.optimizer.stop()
+        ray.wait(terms)
+
 
 class PSClient(ShardedPS):
     def __init__(self, ps_dict):

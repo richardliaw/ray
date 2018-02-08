@@ -54,6 +54,9 @@ class PSOptimizer(Optimizer):
         self.timers = {k: TimerStat() for k in self.timers}
         return stats
 
+    def stop(self):
+        self.ps.stop()
+
 
 class DriverlessPSOptimizer(PSOptimizer):
 

@@ -156,5 +156,6 @@ class ShardedAgent(Agent):
     def _stop(self):
         terms = [a.__ray_terminate__.remote(a._ray_actor_id.id())
                         for a in self.remote_evaluators]
+        self.optimizer.stop()
         ray.wait(terms)
         return
