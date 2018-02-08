@@ -15,18 +15,19 @@ class DataFrame(object):
         Args:
             df ([ObjectID]): The list of ObjectIDs that contain the dataframe
                 partitions.
-            columns ([str]): The list of column names for this dataframe.
+            columns (pandas.Index): The column names for this dataframe, in
+                pandas Index object.
         """
         assert(len(df) > 0)
 
-        self.df = df
+        self._df = df
         self.columns = columns
 
     def __str__(self):
-        return str(pd.concat(ray.get(self.df)))
+        return "ray.DataFrame object"
 
     def __repr__(self):
-        return str(pd.concat(ray.get(self.df)))
+        return "ray.DataFrame object"
 
     @property
     def index(self):
@@ -35,8 +36,14 @@ class DataFrame(object):
         Returns:
             The union of all indexes across the partitions.
         """
-        indices = ray.get(self.map_partitions(lambda df: df.index).df)
-        return indices[0].append(indices[1:])
+        indices = ray.get(self._map_partitions(lambda df: df.index)._df)
+        if isinstance(indices[0], pd.RangeIndex):
+            merged = indices[0]
+            for index in indices[1:]:
+                merged = merged.union(index)
+            return merged
+        else:
+            return indices[0].append(indices[1:])
 
     @property
     def size(self):
@@ -45,7 +52,7 @@ class DataFrame(object):
         Returns:
             The number of elements in the DataFrame.
         """
-        sizes = ray.get(self.map_partitions(lambda df: df.size).df)
+        sizes = ray.get(self._map_partitions(lambda df: df.size)._df)
         return sum(sizes)
 
     @property
@@ -57,7 +64,7 @@ class DataFrame(object):
         """
         # The number of dimensions is common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.ndim, self.df[0]))
+        return ray.get(_deploy_func.remote(lambda df: df.ndim, self._df[0]))
 
     @property
     def ftypes(self):
@@ -68,7 +75,7 @@ class DataFrame(object):
         """
         # The ftypes are common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.ftypes, self.df[0]))
+        return ray.get(_deploy_func.remote(lambda df: df.ftypes, self._df[0]))
 
     @property
     def dtypes(self):
@@ -79,7 +86,7 @@ class DataFrame(object):
         """
         # The dtypes are common across all partitions.
         # The first partition will be enough.
-        return ray.get(_deploy_func.remote(lambda df: df.dtypes, self.df[0]))
+        return ray.get(_deploy_func.remote(lambda df: df.dtypes, self._df[0]))
 
     @property
     def empty(self):
@@ -89,7 +96,7 @@ class DataFrame(object):
             True if the DataFrame is empty.
             False otherwise.
         """
-        all_empty = ray.get(self.map_partitions(lambda df: df.empty).df)
+        all_empty = ray.get(self._map_partitions(lambda df: df.empty)._df)
         return False not in all_empty
 
     @property
@@ -100,7 +107,7 @@ class DataFrame(object):
             The numpy representation of this DataFrame.
         """
         return np.concatenate(
-            ray.get(self.map_partitions(lambda df: df.values).df))
+            ray.get(self._map_partitions(lambda df: df.values)._df))
 
     @property
     def axes(self):
@@ -120,7 +127,7 @@ class DataFrame(object):
         """
         return (len(self.index), len(self.columns))
 
-    def map_partitions(self, func, *args):
+    def _map_partitions(self, func, *args):
         """Apply a function on each partition.
 
         Args:
@@ -130,7 +137,7 @@ class DataFrame(object):
             A new DataFrame containing the result of the function.
         """
         assert(callable(func))
-        new_df = [_deploy_func.remote(func, part) for part in self.df]
+        new_df = [_deploy_func.remote(func, part) for part in self._df]
 
         return DataFrame(new_df, self.columns)
 
@@ -140,9 +147,9 @@ class DataFrame(object):
         Returns:
             A new DataFrame containing the new column names.
         """
-        new_dfs = self.map_partitions(lambda df: df.add_prefix(prefix))
+        new_dfs = self._map_partitions(lambda df: df.add_prefix(prefix))
         new_cols = self.columns.map(lambda x: str(prefix) + str(x))
-        return DataFrame(new_dfs.df, new_cols)
+        return DataFrame(new_dfs._df, new_cols)
 
     def add_suffix(self, suffix):
         """Add a suffix to each of the column names.
@@ -150,9 +157,9 @@ class DataFrame(object):
         Returns:
             A new DataFrame containing the new column names.
         """
-        new_dfs = self.map_partitions(lambda df: df.add_suffix(suffix))
+        new_dfs = self._map_partitions(lambda df: df.add_suffix(suffix))
         new_cols = self.columns.map(lambda x: str(x) + str(suffix))
-        return DataFrame(new_dfs.df, new_cols)
+        return DataFrame(new_dfs._df, new_cols)
 
     def applymap(self, func):
         """Apply a function to a DataFrame elementwise.
@@ -161,7 +168,7 @@ class DataFrame(object):
             func (callable): The function to apply.
         """
         assert(callable(func))
-        return self.map_partitions(lambda df: df.applymap(lambda x: func(x)))
+        return self._map_partitions(lambda df: df.applymap(lambda x: func(x)))
 
     def copy(self, deep=True):
         """Creates a shallow copy of the DataFrame.
@@ -169,7 +176,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame pointing to the same partitions as this one.
         """
-        return DataFrame(self.df, self.columns)
+        return DataFrame(self._df, self.columns)
 
     def groupby(self, by=None, axis=0, level=None, as_index=True, sort=True,
                 group_keys=True, squeeze=False, **kwargs):
@@ -188,12 +195,12 @@ class DataFrame(object):
         """
 
         indices = list(set(
-            [index for df in ray.get(self.df) for index in list(df.index)]))
+            [index for df in ray.get(self._df) for index in list(df.index)]))
 
-        chunksize = int(len(indices) / len(self.df))
+        chunksize = int(len(indices) / len(self._df))
         partitions = []
 
-        for df in self.df:
+        for df in self._df:
             partitions.append(_shuffle.remote(df, indices, chunksize))
 
         partitions = ray.get(partitions)
@@ -220,7 +227,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the result of the reduction.
         """
-        return self.groupby(axis=axis).map_partitions(func)
+        return self.groupby(axis=axis)._map_partitions(func)
 
     def sum(self, axis=None, skipna=True, level=None, numeric_only=None):
         """Perform a sum across the DataFrame.
@@ -232,7 +239,7 @@ class DataFrame(object):
         Returns:
             The sum of the DataFrame.
         """
-        sum_of_partitions = self.map_partitions(
+        sum_of_partitions = self._map_partitions(
             lambda df: df.sum(axis=axis, skipna=skipna, level=level,
                               numeric_only=numeric_only))
 
@@ -246,7 +253,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame with the applied absolute value.
         """
-        return self.map_partitions(lambda df: df.abs())
+        return self._map_partitions(lambda df: df.abs())
 
     def isin(self, values):
         """Fill a DataFrame with booleans for cells contained in values.
@@ -260,7 +267,7 @@ class DataFrame(object):
             True: cell is contained in values.
             False: otherwise
         """
-        return self.map_partitions(lambda df: df.isin(values))
+        return self._map_partitions(lambda df: df.isin(values))
 
     def isna(self):
         """Fill a DataFrame with booleans for cells containing NA.
@@ -271,7 +278,7 @@ class DataFrame(object):
             True: cell contains NA.
             False: otherwise.
         """
-        return self.map_partitions(lambda df: df.isna())
+        return self._map_partitions(lambda df: df.isna())
 
     def isnull(self):
         """Fill a DataFrame with booleans for cells containing a null value.
@@ -282,7 +289,7 @@ class DataFrame(object):
             True: cell contains null.
             False: otherwise.
         """
-        return self.map_partitions(lambda df: df.isnull)
+        return self._map_partitions(lambda df: df.isnull)
 
     def keys(self):
         """Get the info axis for the DataFrame.
@@ -291,7 +298,7 @@ class DataFrame(object):
             A pandas Index for this DataFrame.
         """
         # Each partition should have the same index, so we'll use 0's
-        return ray.get(_deploy_func.remote(lambda df: df.keys(), self.df[0]))
+        return ray.get(_deploy_func.remote(lambda df: df.keys(), self._df[0]))
 
     def transpose(self, *args, **kwargs):
         """Transpose columns and rows for the DataFrame.
@@ -301,7 +308,7 @@ class DataFrame(object):
         Returns:
             A new DataFrame transposed from this DataFrame.
         """
-        local_transpose = self.map_partitions(
+        local_transpose = self._map_partitions(
             lambda df: df.transpose(*args, **kwargs))
         # Sum will collapse the NAs from the groupby
         return local_transpose.reduce_by_index(lambda df: df.sum(), axis=1)
@@ -346,11 +353,49 @@ class DataFrame(object):
 
     def all(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis is None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.all(axis,
+                                                      bool_only,
+                                                      skipna,
+                                                      level,
+                                                      **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def any(self, axis=None, bool_only=None, skipna=None, level=None,
             **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return whether all elements are True over requested axis
+
+        Note:
+            If axis=None or axis=0, this call applies df.all(axis=1)
+            to the transpose of df.
+        """
+        if axis is None or axis == 0:
+            df = self.T
+            axis = 1
+            ordered_index = df.columns
+        else:
+            df = self
+            ordered_index = df.index
+
+        mapped = df._map_partitions(lambda df: df.any(axis,
+                                                      bool_only,
+                                                      skipna,
+                                                      level,
+                                                      **kwargs))
+        return to_pandas(mapped)[ordered_index]
 
     def append(self, other, ignore_index=False, verify_integrity=False):
         raise NotImplementedError("Not Yet implemented.")
@@ -389,7 +434,21 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def bool(self):
-        raise NotImplementedError("Not Yet implemented.")
+        """Return the bool of a single element PandasObject.
+
+        This must be a boolean scalar value, either True or False.  Raise a
+        ValueError if the PandasObject does not have exactly 1 element, or that
+        element is not boolean
+        """
+        shape = self.shape
+        if shape != (1,) and shape != (1, 1):
+            raise ValueError("""The PandasObject does not have exactly
+                                1 element. Return the bool of a single
+                                element PandasObject. The truth value is
+                                ambiguous. Use a.empty, a.item(), a.any()
+                                or a.all().""")
+        else:
+            return to_pandas(self).bool()
 
     def boxplot(self, column=None, by=None, ax=None, fontsize=None, rot=0,
                 grid=True, figsize=None, layout=None, return_type=None,
@@ -429,7 +488,15 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def count(self, axis=0, level=None, numeric_only=False):
-        raise NotImplementedError("Not Yet implemented.")
+        if axis == 1:
+            original_index = self.index
+            return self.T.count(axis=0,
+                                level=level,
+                                numeric_only=numeric_only)[original_index]
+        else:
+            return sum(ray.get(self._map_partitions(lambda df: df.count(
+                axis=axis, level=level, numeric_only=numeric_only
+            ))._df))
 
     def cov(self, min_periods=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -784,7 +851,9 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def round(self, decimals=0, *args, **kwargs):
-        raise NotImplementedError("Not Yet implemented.")
+        return self._map_partitions(lambda df: df.round(decimals=decimals,
+                                                        *args,
+                                                        **kwargs))
 
     def rpow(self, other, axis='columns', level=None, fill_value=None):
         raise NotImplementedError("Not Yet implemented.")
@@ -1008,7 +1077,17 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __getitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Get the column specified by key for this DataFrame.
+
+        Args:
+            key : The column name.
+
+        Returns:
+            A Pandas Series representing the value fo the column.
+        """
+        result_column_chunks = self._map_partitions(
+            lambda df: df.__getitem__(key))
+        return to_pandas(result_column_chunks)
 
     def __setitem__(self, key, value):
         raise NotImplementedError("Not Yet implemented.")
@@ -1017,9 +1096,6 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __unicode__(self):
-        raise NotImplementedError("Not Yet implemented.")
-
-    def __neg__(self):
         raise NotImplementedError("Not Yet implemented.")
 
     def __invert__(self):
@@ -1059,15 +1135,149 @@ class DataFrame(object):
         raise NotImplementedError("Not Yet implemented.")
 
     def __delitem__(self, key):
-        raise NotImplementedError("Not Yet implemented.")
+        """Delete an item by key. `del a[key]` for example.
+           Operation happnes in place.
+
+        Args:
+            key: key to delete
+        """
+        def del_helper(df):
+            df.__delitem__(key)
+            return df
+        self._df = self._map_partitions(del_helper)._df
+        self.columns = self.columns.drop(key)
 
     def __finalize__(self, other, method=None, **kwargs):
         raise NotImplementedError("Not Yet implemented.")
 
     def __copy__(self, deep=True):
-        raise NotImplementedError("Not Yet implemented.")
+        """Make a copy using Ray.DataFrame.copy method
+
+        Args:
+            deep: Boolean, deep copy or not.
+                  Currently we do not support deep copy.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=deep)
 
     def __deepcopy__(self, memo=None):
+        """Make a -deep- copy using Ray.DataFrame.copy method
+           This is equivalent to copy(deep=True).
+
+        Args:
+            memo: No effect. Just to comply with Pandas API.
+
+        Returns:
+            A Ray DataFrame object.
+        """
+        return self.copy(deep=True)
+
+    def __and__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __or__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __xor__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __lt__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __le__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __gt__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __ge__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __eq__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __ne__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __add__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __iadd__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __mul__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __imul__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __pow__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __ipow__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __sub__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __isub__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __neg__(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __floordiv__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __truediv__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __mod__(self, other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __sizeof__(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    @property
+    def __doc__(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    @property
+    def blocks(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    @property
+    def style(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def iat(axis=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __rsub__(other, axis=None, level=None, fill_value=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def loc(axis=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    @property
+    def is_copy(self):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __itruediv__(other):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def __div__(other, axis=None, level=None, fill_value=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def at(axis=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def ix(axis=None):
+        raise NotImplementedError("Not Yet implemented.")
+
+    def iloc(axis=None):
         raise NotImplementedError("Not Yet implemented.")
 
 
@@ -1114,7 +1324,7 @@ def _local_groupby(df_rows, axis=0):
 
 @ray.remote
 def _deploy_func(func, dataframe, *args):
-    """Deploys a function for the map_partitions call.
+    """Deploys a function for the _map_partitions call.
 
     Args:
         dataframe (pandas.DataFrame): The pandas DataFrame for this partition.
@@ -1163,7 +1373,7 @@ def from_pandas(df, npartitions=None, chunksize=None, sort=True):
 
 
 def to_pandas(df):
-    """Converts a Ray DataFrame to a pandas DataFrame.
+    """Converts a Ray DataFrame to a pandas DataFrame/Series.
 
     Args:
         df (ray.DataFrame): The Ray DataFrame to convert.
@@ -1171,4 +1381,4 @@ def to_pandas(df):
     Returns:
         A new pandas DataFrame.
     """
-    return pd.concat(ray.get(df.df))
+    return pd.concat(ray.get(df._df))
