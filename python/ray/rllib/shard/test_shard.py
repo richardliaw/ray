@@ -1,4 +1,3 @@
-from ray.rllib.a3c import DEFAULT_CONFIG
 import sys
 import gym
 import argparse
@@ -6,7 +5,7 @@ import argparse
 import ray
 import numpy as np
 from ray.tune.result import TrainingResult, pretty_print
-from ray.rllib.shard.shardedagent import ShardedAgent
+from ray.rllib.shard.shardedagent import ShardedAgent, DEFAULT_CONFIG
 
 parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
