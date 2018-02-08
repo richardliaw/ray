@@ -153,3 +153,9 @@ class ShardedAgent(Agent):
 
     def compute_action(self, observation):
         raise NotImplementedError
+
+    def _stop(self):
+        terms = [a.__ray_terminate__.remote(a._ray_actor_id.id())
+                        for a in self.remote_evaluators]
+        ray.wait(terms)
+        return
