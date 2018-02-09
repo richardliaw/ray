@@ -2,8 +2,8 @@ sharded-benchmark:
     env: PongDeterministic-v4
     run: shard
     resources:
-        cpu:
-             eval: "spec.config.num_workers + spec.config.optimizer.shards + 2"
+        cpu: 64
+             #eval: "spec.config.num_workers + spec.config.optimizer.shards + 2"
         # driver_cpu_limit: 1
         #gpu: 10
         #driver_gpu_limit: 1
@@ -33,5 +33,5 @@ sharded-benchmark:
             lr: 0.0001
             grads_per_step: 2000
             force: False
-            shards:
-                grid_search: [2, 4, 8, 12]
+            shards: 1
+               # grid_search: [2, 4, 8, 12]
