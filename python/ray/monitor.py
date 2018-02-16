@@ -320,6 +320,11 @@ class Monitor(object):
         if ip:
             self.load_metrics.update(ip, static_resources, dynamic_resources)
         else:
+            print("DEBUGGING!")
+            print(data)
+            print("Clients")
+            print([entry for client in clients.values() for entry in client if (entry["ClientType"] == "local_scheduler")])
+
             print("Warning: could not find ip for client {} in {}".format(
                 client_id, local_schedulers))
 
