@@ -431,6 +431,10 @@ class CommonPolicyEvaluator(PolicyEvaluator):
         for pid, state in objs["state"].items():
             self.policy_map[pid].set_state(state)
 
+    def stop(self):
+        if hasattr(self, "__ray_terminate__"):
+            self.__ray_terminate__()
+
 
 def _validate_and_canonicalize(policy_graph, env):
     if isinstance(policy_graph, dict):
