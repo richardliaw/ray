@@ -265,7 +265,6 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         return sample_timesteps, train_timesteps
 
     def stats(self):
-        replay_stats = ray.get(self.replay_actors[0].stats.remote())
         timing = {
             "{}_time_ms".format(k): round(1000 * self.timers[k].mean, 3)
             for k in self.timers
@@ -281,12 +280,15 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
             "num_weight_syncs": self.num_weight_syncs,
         }
         debug_stats = {
-            "replay_shard_0": replay_stats,
             "timing_breakdown": timing,
             "pending_sample_tasks": self.sample_tasks.count,
             "pending_replay_tasks": self.replay_tasks.count,
             "learner_queue": self.learner.learner_queue_size.stats(),
         }
+        if self.replay_actors:
+            replay_stats = ray.get(self.replay_actors[0].stats.remote())
+            debug_stats.update({"replay_shard_0": replay_stats})
+
         if self.debug:
             stats.update(debug_stats)
         return dict(PolicyOptimizer.stats(self), **stats)
