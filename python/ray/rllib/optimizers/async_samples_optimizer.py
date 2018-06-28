@@ -128,8 +128,8 @@ class LearnerThread(threading.Thread):
             ra, replay = self.inqueue.get()
         if replay is not None:
             with self.grad_timer:
-                td_error = self.local_evaluator.compute_apply(replay)[
-                    "td_error"]
+                res = self.local_evaluator.compute_apply(replay)
+                td_error = res["td_error"] if res else None
             self.outqueue.put((ra, replay, td_error))
         self.learner_queue_size.push(self.inqueue.qsize())
         self.weights_updated = True
@@ -155,6 +155,7 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
 
         self.debug = debug
         self.replay_starts = learning_starts
+        self.prioritized_replay = prioritized_replay
         self.prioritized_replay_beta = prioritized_replay_beta
         self.prioritized_replay_eps = prioritized_replay_eps
         self.train_batch_size = train_batch_size
@@ -221,8 +222,12 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
                 sample_timesteps += self.sample_batch_size
 
                 # Send the data to the replay buffer
-                random.choice(self.replay_actors).add_batch.remote(
-                    sample_batch)
+                if self.replay_actors:
+                    random.choice(self.replay_actors).add_batch.remote(
+                        sample_batch)
+                else:
+                    # Add to local buffer
+                    self.learner.inqueue.put((None, ray.get(sample_batch)))
 
                 # Update weights if needed
                 self.steps_since_update[ev] += self.sample_batch_size
@@ -252,7 +257,9 @@ class AsyncSamplesOptimizer(PolicyOptimizer):
         with self.timers["update_priorities"]:
             while not self.learner.outqueue.empty():
                 ra, replay, td_error = self.learner.outqueue.get()
-                ra.update_priorities.remote(replay["batch_indexes"], td_error)
+                if ra:
+                    ra.update_priorities.remote(
+                        replay["batch_indexes"], td_error)
                 train_timesteps += self.train_batch_size
 
         return sample_timesteps, train_timesteps
