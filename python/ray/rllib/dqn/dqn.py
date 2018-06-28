@@ -163,8 +163,8 @@ class DQNAgent(Agent):
                 self.config["optimizer_config"][k] = self.config[k]
 
         self.optimizer = getattr(optimizers, self.config["optimizer_class"])(
-            self.config["optimizer_config"], self.local_evaluator,
-            self.remote_evaluators)
+            self.local_evaluator, self.remote_evaluators,
+            self.config["optimizer_config"])
 
         self.last_target_update_ts = 0
         self.num_target_updates = 0

@@ -296,7 +296,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 batch_steps=50)]
         else:
             remote_evs = []
-        optimizer = optimizer_cls({}, ev, remote_evs)
+        optimizer = optimizer_cls(ev, remote_evs, {})
         ev.foreach_policy(
             lambda p, _: p.set_epsilon(0.02)
             if isinstance(p, DQNPolicyGraph) else None)
@@ -338,7 +338,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             policy_graph=policies,
             policy_mapping_fn=lambda agent_id: random.choice(policy_ids),
             batch_steps=100)
-        optimizer = SyncSamplesOptimizer({}, ev, [])
+        optimizer = SyncSamplesOptimizer(ev, [], {})
         for i in range(100):
             optimizer.step()
             result = collect_metrics(ev)

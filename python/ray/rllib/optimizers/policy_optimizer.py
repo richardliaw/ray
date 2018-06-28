@@ -59,7 +59,7 @@ class PolicyOptimizer(object):
                 for i in range(num_workers)]
         return cls(optimizer_config, local_evaluator, remote_evaluators)
 
-    def __init__(self, config, local_evaluator, remote_evaluators):
+    def __init__(self, local_evaluator, remote_evaluators=None, config=None):
         """Create an optimizer instance.
 
         Args:
@@ -69,9 +69,9 @@ class PolicyOptimizer(object):
                 evaluators instances. If empty, the optimizer should fall back
                 to using only the local evaluator.
         """
-        self.config = config
         self.local_evaluator = local_evaluator
-        self.remote_evaluators = remote_evaluators
+        self.remote_evaluators = remote_evaluators or []
+        self.config = config or {}
         self._init(**config)
 
         # Counters that should be updated by sub-classes
