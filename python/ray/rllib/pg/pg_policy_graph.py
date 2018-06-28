@@ -40,11 +40,10 @@ class PGPolicyGraph(TFPolicyGraph):
             ("actions", actions),
             ("advantages", advantages),
         ]
-        self.is_training = tf.placeholder_with_default(True, ())
         TFPolicyGraph.__init__(
             self, obs_space, action_space, sess, obs_input=obs,
             action_sampler=action_dist.sample(), loss=loss,
-            loss_inputs=loss_in, is_training=self.is_training)
+            loss_inputs=loss_in)
         sess.run(tf.global_variables_initializer())
 
     def postprocess_trajectory(self, sample_batch, other_agent_batches=None):

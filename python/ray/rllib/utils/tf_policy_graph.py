@@ -36,7 +36,7 @@ class TFPolicyGraph(PolicyGraph):
     def __init__(
             self, observation_space, action_space, sess, obs_input,
             action_sampler, loss, loss_inputs,
-            is_training, state_inputs=None, state_outputs=None):
+            is_training=None, state_inputs=None, state_outputs=None):
         """Initialize the policy graph.
 
         Arguments:
@@ -62,7 +62,10 @@ class TFPolicyGraph(PolicyGraph):
         self._sampler = action_sampler
         self._loss = loss
         self._loss_inputs = loss_inputs
-        self._is_training = is_training
+        if is_training is not None:
+            self._is_training = is_training
+        else:
+            self._is_training = tf.placeholder_with_default(True, ())
         self._state_inputs = state_inputs or []
         self._state_outputs = state_outputs or []
         self._optimizer = self.optimizer()
