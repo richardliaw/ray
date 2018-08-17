@@ -20,16 +20,16 @@ matrix:
       osx_image: xcode7
       env: PYTHON=3.5
 
-    - os: linux
-      dist: trusty
-      env:
-        - JDK='Oracle JDK 8'
-        - PYTHON=3.5
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-      script:
-      - ./java/test.sh
+      #     - os: linux
+      #       dist: trusty
+      #       env:
+      #         - JDK='Oracle JDK 8'
+      #         - PYTHON=3.5
+      #       install:
+      #         - ./.travis/install-dependencies.sh
+      #         - export PATH="$HOME/miniconda/bin:$PATH"
+      #       script:
+      #       - ./java/test.sh
 
     - os: linux
       dist: trusty
@@ -56,28 +56,28 @@ matrix:
         - flake8 --exclude=python/ray/core/src/common/flatbuffers_ep-prefix/,python/ray/core/generated/,src/common/format/,doc/source/conf.py,python/ray/cloudpickle/ --ignore=C408,E121,E123,E126,E226,E24,E704,W503,W504
         - .travis/yapf.sh --all
 
-    - os: linux
-      dist: trusty
-      env: VALGRIND=1 PYTHON=2.7
-      before_install:
-        - sudo apt-get update -qq
-        - sudo apt-get install -qq valgrind
-      install:
-        - ./.travis/install-dependencies.sh
-        - export PATH="$HOME/miniconda/bin:$PATH"
-        - ./.travis/install-ray.sh
-
-      script:
-        - cd build
-        - bash ../src/common/test/run_valgrind.sh
-        - bash ../src/plasma/test/run_valgrind.sh
-        - bash ../src/local_scheduler/test/run_valgrind.sh
-        - bash ../src/ray/test/run_object_manager_valgrind.sh
-        - cd ..
-
-        - python ./python/ray/plasma/test/test.py valgrind
-        - python ./python/ray/local_scheduler/test/test.py valgrind
-        - python ./python/ray/global_scheduler/test/test.py valgrind
+          #     - os: linux
+          #       dist: trusty
+          #       env: VALGRIND=1 PYTHON=2.7
+          #       before_install:
+          #         - sudo apt-get update -qq
+          #         - sudo apt-get install -qq valgrind
+          #       install:
+          #         - ./.travis/install-dependencies.sh
+          #         - export PATH="$HOME/miniconda/bin:$PATH"
+          #         - ./.travis/install-ray.sh
+          # 
+          #       script:
+          #         - cd build
+          #         - bash ../src/common/test/run_valgrind.sh
+          #         - bash ../src/plasma/test/run_valgrind.sh
+          #         - bash ../src/local_scheduler/test/run_valgrind.sh
+          #         - bash ../src/ray/test/run_object_manager_valgrind.sh
+          #         - cd ..
+          # 
+          #         - python ./python/ray/plasma/test/test.py valgrind
+          #         - python ./python/ray/local_scheduler/test/test.py valgrind
+          #         - python ./python/ray/global_scheduler/test/test.py valgrind
 
     # Build Linux wheels.
     - os: linux
@@ -101,13 +101,13 @@ matrix:
       script:
         - ./.travis/test-wheels.sh
 
-    # Test GCS integration
-    - os: linux
-      dist: trusty
-      env:
-        - PYTHON=3.5
-        - RAY_USE_NEW_GCS=on
-        - RAY_USE_XRAY=1
+          #     # Test GCS integration
+          #     - os: linux
+          #       dist: trusty
+          #       env:
+          #         - PYTHON=3.5
+          #         - RAY_USE_NEW_GCS=on
+          #         - RAY_USE_XRAY=1
 
     - os: linux
       dist: trusty
