@@ -7,7 +7,7 @@ import os
 import time
 
 from ray.tune.error import TuneError
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import process_experiments
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial, DEBUG_PRINT_INTERVAL
 from ray.tune.log_sync import wait_for_log_sync
@@ -101,7 +101,7 @@ def run_experiments(experiments=None,
     """
     # This is important here to schematize the experiments
     # and also does implicit registration.
-    experiments = convert_to_experiment_list(experiments)
+    experiments = process_experiments(experiments)
     checkpoint_dir = _find_checkpoint_dir(experiments)
 
     if resume and checkpoint_dir and os.path.exists(

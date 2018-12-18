@@ -7,7 +7,7 @@ import copy
 
 from ray.tune.error import TuneError
 from ray.tune.trial import Trial
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import process_experiments
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 from ray.tune.suggest.search import SearchAlgorithm
 from ray.tune.suggest.variant_generator import format_vars
@@ -48,7 +48,7 @@ class SuggestionAlgorithm(SearchAlgorithm):
         Arguments:
             experiments (Experiment | list | dict): Experiments to run.
         """
-        experiment_list = convert_to_experiment_list(experiments)
+        experiment_list = process_experiments(experiments)
         for experiment in experiment_list:
             self._trial_generator = itertools.chain(
                 self._trial_generator,

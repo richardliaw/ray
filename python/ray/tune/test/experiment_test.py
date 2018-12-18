@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import unittest
 
-from ray.tune.experiment import Experiment, convert_to_experiment_list
+from ray.tune.experiment import Experiment, process_experiments
 from ray.tune.error import TuneError
 
 
@@ -17,12 +17,12 @@ class ExperimentTest(unittest.TestCase):
                 "script_min_iter_time_s": 0
             }
         })
-        result = convert_to_experiment_list(exp1)
+        result = process_experiments(exp1)
         self.assertEqual(len(result), 1)
         self.assertEqual(type(result), list)
 
     def testConvertExperimentNone(self):
-        result = convert_to_experiment_list(None)
+        result = process_experiments(None)
         self.assertEqual(len(result), 0)
         self.assertEqual(type(result), list)
 
@@ -34,7 +34,7 @@ class ExperimentTest(unittest.TestCase):
                 "script_min_iter_time_s": 0
             }
         })
-        result = convert_to_experiment_list([exp1, exp1])
+        result = process_experiments([exp1, exp1])
         self.assertEqual(len(result), 2)
         self.assertEqual(type(result), list)
 
@@ -53,9 +53,9 @@ class ExperimentTest(unittest.TestCase):
                 }
             }
         }
-        result = convert_to_experiment_list(experiment)
+        result = process_experiments(experiment)
         self.assertEqual(len(result), 2)
         self.assertEqual(type(result), list)
 
     def testConvertExperimentIncorrect(self):
-        self.assertRaises(TuneError, lambda: convert_to_experiment_list("hi"))
+        self.assertRaises(TuneError, lambda: process_experiments("hi"))

@@ -197,12 +197,15 @@ class Experiment(object):
             raise TuneError("Improper 'run' - not string nor trainable.")
 
 
-def convert_to_experiment_list(experiments):
+def process_experiments(experiments):
     """Produces a list of Experiment objects.
 
     Converts input from dict, single experiment, or list of
     experiments to list of experiments. If input is None,
     will return an empty list.
+
+    This will also create Experiment objects, which implicitly register
+    the Trainable.
 
     Arguments:
         experiments (Experiment | list | dict): Experiments to run.

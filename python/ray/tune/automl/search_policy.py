@@ -8,7 +8,7 @@ import logging
 
 from ray.tune.trial import Trial
 from ray.tune.suggest import SearchAlgorithm
-from ray.tune.experiment import convert_to_experiment_list
+from ray.tune.experiment import process_experiments
 from ray.tune.suggest.variant_generator import generate_variants
 from ray.tune.config_parser import make_parser, create_trial_from_spec
 
@@ -66,7 +66,7 @@ class AutoMLSearcher(SearchAlgorithm):
         self._start_ts = 0
 
     def add_configurations(self, experiments):
-        self.experiment_list = convert_to_experiment_list(experiments)
+        self.experiment_list = process_experiments(experiments)
 
     def get_best_trial(self):
         """Returns the Trial object with the best reward_attr"""
