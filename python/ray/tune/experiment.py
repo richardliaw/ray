@@ -159,7 +159,10 @@ class Experiment(object):
             exp = cls(name, run_value, **spec)
         except TypeError as exc:
             logger.exception("Improper argument from JSON.")
-            raise exc
+            exc_str = str(exc)
+            if "__init__() got an " in exc_str:
+                exc_str = exc_str[len("__init__() got an"):].strip()
+            raise TuneError(exc_str)
         return exp
 
     @classmethod
