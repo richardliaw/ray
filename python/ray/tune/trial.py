@@ -248,7 +248,9 @@ class Trial(object):
         if self.last_result is None:
             return self._status_string()
 
-        def location_string(hostname, pid):
+        def location_string(location):
+            if location is None:
+                return ""
             if hostname == os.uname()[1]:
                 return 'pid={}'.format(pid)
             else:
@@ -257,9 +259,7 @@ class Trial(object):
         pieces = [
             '{} [{}]'.format(
                 self._status_string(),
-                location_string(
-                    self.last_result.get(HOSTNAME),
-                    self.last_result.get(PID))), '{} s'.format(
+                location_string(self.location)), '{} s'.format(
                         int(self.last_result.get(TIME_TOTAL_S)))
         ]
 
@@ -313,6 +313,8 @@ class Trial(object):
                 pretty_print(result).replace("\n", "\n  ")))
             self.last_debug = time.time()
         self.last_result = result
+        self.location = (
+            self.last_result.get(HOSTNAME), self.last_result.get(PID))
         self.result_logger.on_result(self.last_result)
 
     def _get_trainable_cls(self):
@@ -373,6 +375,8 @@ class Trial(object):
     def __setstate__(self, state):
         logger_started = state.pop("_logger_started")
         self.__dict__.update(state)
-        Trial._registration_check(self.__dict__["trainable_name"])
+
+        self.location = None
+        Trial._registration_check(self.trainable_name)
         if logger_started:
             self.init_logger()
