@@ -324,10 +324,10 @@ def exec_cluster(config_file, cmd, docker, screen, tmux, stop, start,
         "",
     )
     if docker:
-        cname = config["docker"]["container_name"]
-        if not cname:
+        container_name = config["docker"]["container_name"]
+        if not container_name:
             raise ValueError("Docker container not specified in config.")
-        cmd = with_docker_exec([cmd], container_name=cname)[0]
+        cmd = with_docker_exec([cmd], container_name=container_name)[0]
 
     if stop:
         cmd += ("; ray stop; ray teardown ~/ray_bootstrap_config.yaml --yes "
