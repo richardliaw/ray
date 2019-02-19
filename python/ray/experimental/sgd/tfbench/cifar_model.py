@@ -32,7 +32,8 @@ class CIFARModel(Model):
             dtype=tf.int32,
             name='synthetic_labels')
 
-        model = model_config.get_model_config("resnet20_v2", dataset.Cifar10Dataset())
+        model = model_config.get_model_config("resnet20_v2",
+                                              dataset.Cifar10Dataset())
         logits, aux = model.build_network(
             inputs, data_format=use_cpus and "NHWC" or "NCHW")
         loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -59,4 +60,3 @@ class CIFARModel(Model):
 
     def set_weights(self, weights):
         self.variables.set_flat(weights)
-
