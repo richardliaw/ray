@@ -27,7 +27,10 @@ import re
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib import nccl
+try:
+    from tensorflow.contrib import nccl
+except ImportError:
+    nccl = None
 from tensorflow.contrib.all_reduce.python import all_reduce
 
 logger = logging.getLogger(__name__)

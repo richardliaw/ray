@@ -26,7 +26,18 @@ _model_name_to_imagenet_model = {
     'resnet152_v2': resnet_model.create_resnet152_v2_model,
 }
 
-_model_name_to_cifar_model = {}
+_model_name_to_cifar_model = {
+    'resnet20': resnet_model.create_resnet20_cifar_model,
+    'resnet20_v2': resnet_model.create_resnet20_v2_cifar_model,
+    'resnet32': resnet_model.create_resnet32_cifar_model,
+    'resnet32_v2': resnet_model.create_resnet32_v2_cifar_model,
+    'resnet44': resnet_model.create_resnet44_cifar_model,
+    'resnet44_v2': resnet_model.create_resnet44_v2_cifar_model,
+    'resnet56': resnet_model.create_resnet56_cifar_model,
+    'resnet56_v2': resnet_model.create_resnet56_v2_cifar_model,
+    'resnet110': resnet_model.create_resnet110_cifar_model,
+    'resnet110_v2': resnet_model.create_resnet110_v2_cifar_model
+}
 
 
 def _get_model_map(dataset_name):
