@@ -31,6 +31,7 @@ class Model(object):
         self.model = model
         self.image_size = image_size
         self.batch_size = batch_size
+        self.depth = 3
         self.default_batch_size = batch_size
         self.learning_rate = learning_rate
         self.layer_counts = layer_counts
@@ -68,19 +69,18 @@ class Model(object):
     def skip_final_affine_layer(self):
         """Returns if the caller of this class should skip the final affine
 
-    Normally, this class adds a final affine layer to the model after calling
-    self.add_inference(), to generate the logits. If a subclass override this
-    method to return True, the caller should not add the final affine layer.
+        Normally, this class adds a final affine layer to the model after calling
+        self.add_inference(), to generate the logits. If a subclass override this
+        method to return True, the caller should not add the final affine layer.
 
-    This is useful for tests.
-    """
+        This is useful for tests.
+        """
         return False
 
     def build_network(self,
                       images,
                       phase_train=True,
                       nclass=1001,
-                      image_depth=3,
                       data_type=tf.float32,
                       data_format='NCHW',
                       use_tf_layers=True,
@@ -92,7 +92,7 @@ class Model(object):
         if data_type == tf.float16 and fp16_vars:
             var_type = tf.float16
         network = convnet_builder.ConvNetBuilder(
-            images, image_depth, phase_train, use_tf_layers, data_format,
+            images, self.depth, phase_train, use_tf_layers, data_format,
             data_type, var_type)
         with tf.variable_scope(
                 'cg', custom_getter=network.get_custom_getter()):

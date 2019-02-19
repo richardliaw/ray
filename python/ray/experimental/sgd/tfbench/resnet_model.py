@@ -381,6 +381,14 @@ class ResnetCifar10Model(model_lib.Model):
         values = [0.1, 0.01, 0.001, 0.0002]
         return tf.train.piecewise_constant(global_step, boundaries, values)
 
+    def get_input_shapes(self):
+        """Return data shapes of inputs for the specified subset."""
+        # Each input is of shape [batch_size, height, width, depth]
+        # Each label is of shape [batch_size]
+        return [[
+            self.batch_size, self.image_size, self.image_size, self.depth
+        ], [self.batch_size]]
+
 
 def create_resnet20_cifar_model():
     return ResnetCifar10Model('resnet20', (3, 3, 3))

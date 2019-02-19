@@ -7,7 +7,7 @@ import os
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import cPickle
+import _pickle as cPickle
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
@@ -17,8 +17,8 @@ from ray.experimental.tfutils import TensorFlowVariables
 
 _SUPPORTED_INPUT_PREPROCESSORS = {
     'imagenet': {
-        'default': preprocessing.RecordInputImagePreprocessor,
-        'official_models_imagenet': preprocessing.ImagenetPreprocessor,
+        # 'default': preprocessing.RecordInputImagePreprocessor,
+        # 'official_models_imagenet': preprocessing.ImagenetPreprocessor,
     },
     'cifar10': {
         'default': preprocessing.Cifar10ImagePreprocessor

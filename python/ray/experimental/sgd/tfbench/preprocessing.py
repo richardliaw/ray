@@ -757,8 +757,8 @@ class Cifar10ImagePreprocessor(BaseImagePreprocessor):
     def minibatch(self,
                   dataset,
                   subset,
-                  use_datasets,
-                  datasets_repeat_cached_sample,
+                  use_datasets=None,
+                  datasets_repeat_cached_sample=None,
                   shift_ratio=-1):
         # TODO(jsimsa): Implement datasets code path
         del use_datasets, datasets_repeat_cached_sample, shift_ratio
