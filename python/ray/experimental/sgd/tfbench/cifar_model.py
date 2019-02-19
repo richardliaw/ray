@@ -5,7 +5,7 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
-from ray.experimental.sgd.tfbench import model_config, preprocessing, dataset
+from ray.experimental.sgd.tfbench import model_config, dataset
 from ray.experimental.sgd.model import Model
 from ray.experimental.tfutils import TensorFlowVariables
 

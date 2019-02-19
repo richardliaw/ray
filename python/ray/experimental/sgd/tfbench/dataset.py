@@ -11,20 +11,6 @@ import _pickle as cPickle
 import tensorflow as tf
 from tensorflow.python.platform import gfile
 
-from ray.experimental.sgd.tfbench import model_config, preprocessing
-from ray.experimental.sgd.model import Model
-from ray.experimental.tfutils import TensorFlowVariables
-
-_SUPPORTED_INPUT_PREPROCESSORS = {
-    'imagenet': {
-        # 'default': preprocessing.RecordInputImagePreprocessor,
-        # 'official_models_imagenet': preprocessing.ImagenetPreprocessor,
-    },
-    'cifar10': {
-        'default': preprocessing.Cifar10ImagePreprocessor
-    },
-}
-
 
 class Dataset(object):
     """Abstract class for cnn benchmarks dataset."""
@@ -59,10 +45,6 @@ class Dataset(object):
 
     def __str__(self):
         return self.name
-
-    def get_input_preprocessor(self, input_preprocessor='default'):
-        assert not self.use_synthetic_gpu_inputs()
-        return _SUPPORTED_INPUT_PREPROCESSORS[self.name][input_preprocessor]
 
     def queue_runner_required(self):
         return self._queue_runner_required
@@ -104,7 +86,7 @@ class Cifar10Dataset(ImageDataset):
             num_classes=11)
 
     def read_data_files(self, subset='train'):
-        """Reads from data file and returns images and labels in a numpy array."""
+        """Reads from data file and returns images and labels in np array."""
         assert self.data_dir, (
             'Cannot call `read_data_files` when using synthetic '
             'data')
@@ -124,7 +106,7 @@ class Cifar10Dataset(ImageDataset):
                 # python2 does not have the encoding parameter
                 encoding = {} if six.PY2 else {'encoding': 'bytes'}
                 inputs.append(cPickle.load(f, **encoding))
-        # See http://www.cs.toronto.edu/~kriz/cifar.html for a description of the
+        # See http://www.cs.toronto.edu/~kriz/cifar.html for a description of
         # input format.
         all_images = np.concatenate(
             [each_input[b'data'] for each_input in inputs]).astype(np.float32)
