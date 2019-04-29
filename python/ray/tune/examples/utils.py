@@ -3,13 +3,15 @@ from __future__ import division
 from __future__ import print_function
 
 import keras
+from keras.datasets import mnist
+from keras import backend as K
 
 
 class TuneKerasCallback(keras.callbacks.Callback):
     def __init__(self, reporter, logs={}):
         self.reporter = reporter
         self.iteration = 0
-        super(TuneCallback, self).__init__()
+        super(TuneKerasCallback, self).__init__()
 
     def on_train_end(self, epoch, logs={}):
         self.reporter(
@@ -47,6 +49,7 @@ def get_mnist_data():
     y_test = keras.utils.to_categorical(y_test, num_classes)
 
     return x_train, y_train, x_test, y_test, input_shape
+
 
 def set_keras_threads(threads):
     # We set threads here to avoid contention, as Keras
