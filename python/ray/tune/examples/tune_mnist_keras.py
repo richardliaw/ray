@@ -19,21 +19,15 @@ from ray.tune.schedulers import AsyncHyperBandScheduler
 
 def train_mnist(config, reporter):
     set_keras_threads(config["threads"])
-    batch_size = 128
     num_classes = 10
     epochs = 12
 
     x_train, y_train, x_test, y_test, input_shape = get_mnist_data()
 
     model = Sequential()
-    model.add(
-        Conv2D(
-            32,
-            kernel_size=(config["kernel1"], config["kernel1"]),
-            activation="relu",
-            input_shape=input_shape))
-    model.add(
-        Conv2D(64, (config["kernel2"], config["kernel2"]), activation="relu"))
+    model.add(Conv2D(
+        32, kernel_size=(3, 3), activation="relu", input_shape=input_shape))
+    model.add(Conv2D(64, (3, 3), activation="relu"))
     model.add(MaxPooling2D(pool_size=(config["poolsize"], config["poolsize"])))
     model.add(Dropout(0.5))
     model.add(Flatten())
@@ -50,7 +44,7 @@ def train_mnist(config, reporter):
     model.fit(
         x_train,
         y_train,
-        batch_size=batch_size,
+        batch_size=128,
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
@@ -99,6 +93,4 @@ if __name__ == "__main__":
                 lambda spec: np.random.uniform(0.1, 0.9)),
             "hidden": tune.sample_from(
                 lambda spec: np.random.randint(32, 512)),
-            "dropout1": tune.sample_from(
-                lambda spec: np.random.uniform(0.2, 0.8)),
         })
