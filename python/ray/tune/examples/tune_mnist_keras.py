@@ -83,9 +83,7 @@ if __name__ == "__main__":
         },
         config={
             "threads": 2,
-            "lr": tune.sample_from(lambda spec: np.random.uniform(0.001, 0.1)),
-            "momentum": tune.sample_from(
-                lambda spec: np.random.uniform(0.1, 0.9)),
-            "hidden": tune.sample_from(
-                lambda spec: np.random.randint(32, 512)),
+            "lr": tune.uniform(0.001, 0.1),
+            "momentum": tune.uniform(0.1, 0.9),
+            "hidden": tune.randint(32, 512),
         })
