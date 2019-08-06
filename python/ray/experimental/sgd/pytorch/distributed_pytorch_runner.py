@@ -19,6 +19,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
                  model_creator,
                  data_creator,
                  optimizer_creator,
+                 loss_creator,
                  train_function=None,
                  validation_function=None,
                  initialization_hook=None,
@@ -40,6 +41,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             model_creator,
             data_creator,
             optimizer_creator,
+            loss_creator,
             train_function=train_function,
             validation_function=validation_function,
             initialization_hook=initialization_hook,
@@ -81,9 +83,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
             self.model = torch.nn.parallel.DistributedDataParallelCPU(
                 self.model)
 
-        logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
+        logger.debug("Creating optimizer.")
+        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.criterion = self.loss_creator(**self.config["loss_kwargs"])
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 

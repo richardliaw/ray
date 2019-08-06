@@ -19,6 +19,7 @@ class PyTorchRunner(object):
                  model_creator,
                  data_creator,
                  optimizer_creator,
+                 loss_creator,
                  train_function=None,
                  validation_function=None,
                  initialization_hook=None,
@@ -39,6 +40,7 @@ class PyTorchRunner(object):
         self.model_creator = model_creator
         self.data_creator = data_creator
         self.optimizer_creator = optimizer_creator
+        self.loss_creator = loss_creator
         self.config = {} if config is None else config
         self.train_function = train_function or utils.train
         self.validation_function = validation_function or utils.validate
@@ -62,8 +64,8 @@ class PyTorchRunner(object):
             self.model = self.model.cuda()
 
         logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
+        self.optimizer = self.optimizer_creator(self.model, self.config)
+        self.criterion = self.loss_creator(**self.config["loss_kwargs"])
         if torch.cuda.is_available():
             self.criterion = self.criterion.cuda()
 
@@ -95,7 +97,7 @@ class PyTorchRunner(object):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Begin Training Epoch {}".format(self.epoch + 1))
         with self._timers["training"]:
-            train_stats = self.train_function(self.train_loader, self.model,
+            train_stats = self.train_function(self.model, self.train_loader,
                                               self.criterion, self.optimizer)
             train_stats["epoch"] = self.epoch
 
@@ -108,7 +110,7 @@ class PyTorchRunner(object):
         """Evaluates the model on the validation data set."""
         with self._timers["validation"]:
             validation_stats = self.validation_function(
-                self.validation_loader, self.model, self.criterion)
+                self.model, self.validation_loader, self.criterion)
 
         validation_stats.update(self.stats())
         return validation_stats

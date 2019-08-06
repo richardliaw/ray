@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 
 
-def train(train_iterator, model, criterion, optimizer):
+def train(model, train_iterator, criterion, optimizer):
     """Runs 1 training epoch"""
     batch_time = AverageMeter()
     data_time = AverageMeter()
@@ -64,7 +64,7 @@ def train(train_iterator, model, criterion, optimizer):
     return stats
 
 
-def validate(val_loader, model, criterion):
+def validation(model, val_iterator, criterion):
     batch_time = AverageMeter()
     losses = AverageMeter()
 
@@ -73,7 +73,7 @@ def validate(val_loader, model, criterion):
 
     with torch.no_grad():
         end = time.time()
-        for i, (features, target) in enumerate(val_loader):
+        for i, (features, target) in enumerate(val_iterator):
 
             if torch.cuda.is_available():
                 features = features.cuda(non_blocking=True)
@@ -211,17 +211,3 @@ class AverageMeter(object):
         self.sum += val * n
         self.count += n
         self.avg = self.sum / self.count
-
-
-def sgd_mse_optimizer(model, config):
-    """Returns the mean squared error criterion and SGD optimizer.
-
-    Args:
-        model (torch.nn.Module): the model to optimize.
-        config (dict): configuration for the optimizer.
-            lr (float): the learning rate. defaults to 0.01.
-    """
-    learning_rate = config.get("lr", 0.01)
-    criterion = nn.MSELoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-    return criterion, optimizer
