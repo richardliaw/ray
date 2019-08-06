@@ -61,7 +61,6 @@ def train_example(num_replicas=1, use_gpu=False):
 
 
 def tune_example(num_replicas=1, use_gpu=False):
-    config =
 
     # analysis = tune.run(PyTorchTrainable, num_samples=1, config=config)
     analysis = tune.run(
