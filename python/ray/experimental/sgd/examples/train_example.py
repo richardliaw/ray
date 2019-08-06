@@ -5,6 +5,9 @@ from __future__ import print_function
 import os
 import torch
 import argparse
+from ray import tune
+from ray.experimental.sgd.pytorch.pytorch_trainer import (PyTorchTrainer,
+                                                          PyTorchTrainable)
 
 import ray
 from ray.experimental.sgd.pytorch import PyTorchTrainer
@@ -20,7 +23,7 @@ def initialization_hook(runner):
     os.environ["NCCL_DEBUG"] = "INFO"
 
 
-def train(train_iterator, model, criterion, optimizer):
+def train(model, train_iterator, criterion, optimizer):
     model.train()
     train_loss, total_num, correct = 0, 0, 0
     for batch_idx, (data, target) in enumerate(train_iterator):
@@ -57,6 +60,25 @@ def train_example(num_replicas=1, use_gpu=False):
     print("success!")
 
 
+def tune_example(num_replicas=1, use_gpu=False):
+    config =
+
+    # analysis = tune.run(PyTorchTrainable, num_samples=1, config=config)
+    analysis = tune.run(
+        PyTorchTrainer.make_trainable(
+            resnet_creator,
+            cifar_creator,
+            xe_optimizer_creator,
+            nn.MSELoss,
+            train_function=train_function,
+        ),
+        num_samples=12,
+        config={"num_replicas": num_replicas, "use_gpu": use_gpu},
+        stop={"training_iteration": 10},
+        verbose=1)
+    return analysis.get_best_config(metric="validation_loss", mode="min")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -78,4 +100,4 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     ray.init(redis_address=args.redis_address)
-    train_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
+    tune_example(num_replicas=args.num_replicas, use_gpu=args.use_gpu)
