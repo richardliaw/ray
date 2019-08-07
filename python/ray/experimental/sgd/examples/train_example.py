@@ -72,7 +72,10 @@ def tune_example(num_replicas=1, use_gpu=False):
             train_function=train_function,
         ),
         num_samples=12,
-        config={"num_replicas": num_replicas, "use_gpu": use_gpu},
+        config={
+            "num_replicas": num_replicas,
+            "use_gpu": use_gpu
+        },
         stop={"training_iteration": 10},
         verbose=1)
     return analysis.get_best_config(metric="validation_loss", mode="min")
