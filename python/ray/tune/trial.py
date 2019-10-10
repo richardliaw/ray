@@ -156,17 +156,11 @@ class Trial(object):
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
 
-        self.history = []
         self.keep_checkpoints_num = keep_checkpoints_num
-        self._cmp_greater = not checkpoint_score_attr.startswith("min-")
-        self.best_checkpoint_attr_value = -float("inf") \
-            if self._cmp_greater else float("inf")
-        # Strip off "min-" from checkpoint attribute
-        self.checkpoint_score_attr = checkpoint_score_attr \
-            if self._cmp_greater else checkpoint_score_attr[4:]
-
-        self._checkpoint = Checkpoint(
+        self.checkpoint_score_attr = checkpoint_score_attr
+        self.checkpoint = Checkpoint(
             storage=Checkpoint.DISK, value=restore_path)
+
         self.export_formats = export_formats
         self.status = Trial.PENDING
         self.logdir = None
@@ -185,7 +179,7 @@ class Trial(object):
         self.extra_arg = None
 
         self._nonjson_fields = [
-            "_checkpoint",
+            "checkpoint",
             "loggers",
             "sync_to_driver_fn",
             "results",
@@ -298,10 +292,10 @@ class Trial(object):
             return False
 
     def has_checkpoint(self):
-        return self._checkpoint.value is not None
+        return self.checkpoint.value is not None
 
     def clear_checkpoint(self):
-        self._checkpoint.value = None
+        self.checkpoint.value = None
 
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
@@ -326,28 +320,6 @@ class Trial(object):
         self.last_result = result
         self.last_update_time = time.time()
         self.result_logger.on_result(self.last_result)
-
-    def compare_checkpoints(self, attr_mean):
-        """Compares two checkpoints based on the attribute attr_mean param.
-        Greater than is used by default. If  command-line parameter
-        checkpoint_score_attr starts with "min-" less than is used.
-
-        Arguments:
-            attr_mean: mean of attribute value for the current checkpoint
-
-        Returns:
-            True: when attr_mean is greater than previous checkpoint attr_mean
-                  and greater than function is selected
-                  when attr_mean is less than previous checkpoint attr_mean and
-                  less than function is selected
-            False: when attr_mean is not in alignment with selected cmp fn
-        """
-        if self._cmp_greater and attr_mean > self.best_checkpoint_attr_value:
-            return True
-        elif (not self._cmp_greater
-              and attr_mean < self.best_checkpoint_attr_value):
-            return True
-        return False
 
     def get_trainable_cls(self):
         return get_trainable_cls(self.trainable_name)
@@ -389,7 +361,7 @@ class Trial(object):
         Sets RUNNING trials to PENDING, and flushes the result logger.
         Note this can only occur if the trial holds a DISK checkpoint.
         """
-        assert self._checkpoint.storage == Checkpoint.DISK, (
+        assert self.checkpoint.storage == Checkpoint.DISK, (
             "Checkpoint must not be in-memory.")
         state = self.__dict__.copy()
         state["resources"] = resources_to_json(self.resources)
