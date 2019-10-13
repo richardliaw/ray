@@ -23,7 +23,7 @@ from ray.autoscaler.autoscaler import validate_config, hash_runtime_conf, \
     hash_launch_conf, fillout_defaults
 from ray.autoscaler.node_provider import get_node_provider, NODE_PROVIDERS
 from ray.autoscaler.tags import TAG_RAY_NODE_TYPE, TAG_RAY_LAUNCH_CONFIG, \
-    TAG_RAY_NODE_NAME, NODE_TYPE_WORKER, NODE_TYPE_HEAD
+    TAG_RAY_NODE_NAME
 from ray.autoscaler.updater import NodeUpdaterThread
 from ray.autoscaler.log_timer import LogTimer
 from ray.autoscaler.docker import with_docker_exec
@@ -90,13 +90,13 @@ def teardown_cluster(config_file, yes, workers_only, override_cluster_name):
             else:
                 A = [
                     node_id for node_id in provider.non_terminated_nodes({
-                        TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD
+                        TAG_RAY_NODE_TYPE: "head"
                     })
                 ]
 
             A += [
                 node_id for node_id in provider.non_terminated_nodes({
-                    TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
+                    TAG_RAY_NODE_TYPE: "worker"
                 })
             ]
             return A
@@ -127,9 +127,7 @@ def kill_node(config_file, yes, hard, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
-        })
+        nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
         node = random.choice(nodes)
         logger.info("kill_node: Shutdown worker {}".format(node))
         if hard:
@@ -175,7 +173,7 @@ def get_or_create_head_node(config, config_file, no_restart, restart_only, yes,
     config_file = os.path.abspath(config_file)
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_TYPE: "head",
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
         if len(nodes) > 0:
@@ -510,9 +508,7 @@ def get_worker_node_ips(config_file, override_cluster_name):
 
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
-        nodes = provider.non_terminated_nodes({
-            TAG_RAY_NODE_TYPE: NODE_TYPE_WORKER
-        })
+        nodes = provider.non_terminated_nodes({TAG_RAY_NODE_TYPE: "worker"})
 
         if config.get("provider", {}).get("use_internal_ips", False) is True:
             return [provider.internal_ip(node) for node in nodes]
@@ -529,7 +525,7 @@ def _get_head_node(config,
     provider = get_node_provider(config["provider"], config["cluster_name"])
     try:
         head_node_tags = {
-            TAG_RAY_NODE_TYPE: NODE_TYPE_HEAD,
+            TAG_RAY_NODE_TYPE: "head",
         }
         nodes = provider.non_terminated_nodes(head_node_tags)
     finally:

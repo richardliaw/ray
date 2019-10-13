@@ -16,9 +16,7 @@ import time
 from threading import Thread
 from getpass import getuser
 
-from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG, \
-    STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, STATUS_WAITING_FOR_SSH, \
-    STATUS_SETTING_UP, STATUS_SYNCING_FILES
+from ray.autoscaler.tags import TAG_RAY_NODE_STATUS, TAG_RAY_RUNTIME_CONFIG
 from ray.autoscaler.log_timer import LogTimer
 
 logger = logging.getLogger(__name__)
@@ -110,7 +108,6 @@ class KubernetesCommandRunner(object):
     def run_rsync_up(self, source, target, redirect=None):
         if target.startswith("~"):
             target = "/root" + target[1:]
-
         try:
             self.process_runner.check_call(
                 [
@@ -167,7 +164,6 @@ class KubernetesCommandRunner(object):
 class SSHCommandRunner(object):
     def __init__(self, log_prefix, node_id, provider, auth_config,
                  cluster_name, process_runner, use_internal_ip):
-
         ssh_control_hash = hashlib.md5(cluster_name.encode()).hexdigest()
         ssh_user_hash = hashlib.md5(getuser().encode()).hexdigest()
         ssh_control_path = "/tmp/ray_ssh_{}/{}".format(
@@ -371,7 +367,7 @@ class NodeUpdater(object):
 
         self.provider.set_node_tags(
             self.node_id, {
-                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                TAG_RAY_NODE_STATUS: "up-to-date",
                 TAG_RAY_RUNTIME_CONFIG: self.runtime_hash
             })
 
@@ -422,8 +418,8 @@ class NodeUpdater(object):
         assert False, "Unable to connect to node"
 
     def do_update(self):
-        self.provider.set_node_tags(
-            self.node_id, {TAG_RAY_NODE_STATUS: STATUS_WAITING_FOR_SSH})
+        self.provider.set_node_tags(self.node_id,
+                                    {TAG_RAY_NODE_STATUS: "waiting-for-ssh"})
 
         deadline = time.time() + NODE_START_WAIT_S
         self.wait_ready(deadline)
@@ -434,8 +430,8 @@ class NodeUpdater(object):
                 "NodeUpdater: {} already up-to-date, skip to ray start".format(
                     self.node_id))
         else:
-            self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SYNCING_FILES})
+            self.provider.set_node_tags(self.node_id,
+                                        {TAG_RAY_NODE_STATUS: "syncing-files"})
             self.sync_file_mounts(self.rsync_up)
 
             # Run init commands
@@ -463,7 +459,6 @@ class NodeUpdater(object):
         logger.info(self.log_prefix +
                     "Syncing {} from {}...".format(source, target))
         self.cmd_runner.run_rsync_down(source, target, redirect=None)
-
 
 class NodeUpdaterThread(NodeUpdater, Thread):
     def __init__(self, *args, **kwargs):
