@@ -362,7 +362,7 @@ class NodeUpdater(object):
             logger.error(self.log_prefix +
                          "Error updating {}".format(error_str))
             self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+                self.node_id, {TAG_RAY_NODE_STATUS: "update-failed"})
             raise e
 
         self.provider.set_node_tags(
@@ -436,7 +436,7 @@ class NodeUpdater(object):
 
             # Run init commands
             self.provider.set_node_tags(
-                self.node_id, {TAG_RAY_NODE_STATUS: STATUS_SETTING_UP})
+                self.node_id, {TAG_RAY_NODE_STATUS: "setting-up"})
             with LogTimer(self.log_prefix +
                           "Initialization commands completed"):
                 for cmd in self.initialization_commands:
