@@ -7,7 +7,7 @@ import os
 import torch.distributed as dist
 import torch.utils.data
 
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.experimental.sgd.pytorch.pytorch_runner_v2 import PyTorchRunner
 
 logger = logging.getLogger(__name__)
 
@@ -15,13 +15,7 @@ logger = logging.getLogger(__name__)
 class DistributedPyTorchRunner(PyTorchRunner):
     """Manages a distributed PyTorch model replica."""
 
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 optimizer_creator,
-                 config=None,
-                 batch_size=16,
-                 backend="gloo"):
+    def __init__(self, *args, backend="gloo", **kwargs):
         """Initializes the runner.
 
         Args:
@@ -34,8 +28,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
             backend (string):  see pytorch_trainer.py.
         """
 
-        super(DistributedPyTorchRunner, self).__init__(
-            model_creator, data_creator, optimizer_creator, config, batch_size)
+        super(DistributedPyTorchRunner, self).__init__(*args, **kwargs)
         self.backend = backend
 
     def setup(self, url, world_rank, world_size):
@@ -46,10 +39,10 @@ class DistributedPyTorchRunner(PyTorchRunner):
             world_rank (int): the index of the runner.
             world_size (int): the total number of runners.
         """
-        self._setup_distributed_pytorch(url, world_rank, world_size)
-        self._setup_training()
+        self.setup_distributed(url, world_rank, world_size)
+        # self._setup_training()
 
-    def _setup_distributed_pytorch(self, url, world_rank, world_size):
+    def setup_distributed(self, url, world_rank, world_size):
         os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
@@ -63,46 +56,46 @@ class DistributedPyTorchRunner(PyTorchRunner):
                 rank=world_rank,
                 world_size=world_size)
 
-    def _setup_training(self):
-        logger.debug("Creating model")
-        self.model = self.model_creator(self.config)
-        if torch.cuda.is_available():
-            self.model = torch.nn.parallel.DistributedDataParallel(
-                self.model.cuda())
-        else:
-            self.model = torch.nn.parallel.DistributedDataParallelCPU(
-                self.model)
+    # def _setup_training(self):
+    #     logger.debug("Creating model")
+    #     self.model = self.model_creator(self.config)
+    #     if torch.cuda.is_available():
+    #         self.model = torch.nn.parallel.DistributedDataParallel(
+    #             self.model.cuda())
+    #     else:
+    #         self.model = torch.nn.parallel.DistributedDataParallelCPU(
+    #             self.model)
 
-        logger.debug("Creating optimizer")
-        self.criterion, self.optimizer = self.optimizer_creator(
-            self.model, self.config)
-        if torch.cuda.is_available():
-            self.criterion = self.criterion.cuda()
+    #     logger.debug("Creating optimizer")
+    #     self.criterion, self.optimizer = self.optimizer_creator(
+    #         self.model, self.config)
+    #     if torch.cuda.is_available():
+    #         self.criterion = self.criterion.cuda()
 
-        logger.debug("Creating dataset")
-        self.training_set, self.validation_set = self.data_creator(self.config)
+    #     logger.debug("Creating dataset")
+    #     self.training_set, self.validation_set = self.data_creator(self.config)
 
-        # TODO: make num_workers configurable
-        self.train_sampler = torch.utils.data.distributed.DistributedSampler(
-            self.training_set)
-        self.train_loader = torch.utils.data.DataLoader(
-            self.training_set,
-            batch_size=self.batch_size,
-            shuffle=(self.train_sampler is None),
-            num_workers=2,
-            pin_memory=False,
-            sampler=self.train_sampler)
+    #     # TODO: make num_workers configurable
+    #     self.train_sampler = torch.utils.data.distributed.DistributedSampler(
+    #         self.training_set)
+    #     self.train_loader = torch.utils.data.DataLoader(
+    #         self.training_set,
+    #         batch_size=self.batch_size,
+    #         shuffle=(self.train_sampler is None),
+    #         num_workers=2,
+    #         pin_memory=False,
+    #         sampler=self.train_sampler)
 
-        self.validation_sampler = (
-            torch.utils.data.distributed.DistributedSampler(
-                self.validation_set))
-        self.validation_loader = torch.utils.data.DataLoader(
-            self.validation_set,
-            batch_size=self.batch_size,
-            shuffle=(self.validation_sampler is None),
-            num_workers=2,
-            pin_memory=False,
-            sampler=self.validation_sampler)
+    #     self.validation_sampler = (
+    #         torch.utils.data.distributed.DistributedSampler(
+    #             self.validation_set))
+    #     self.validation_loader = torch.utils.data.DataLoader(
+    #         self.validation_set,
+    #         batch_size=self.batch_size,
+    #         shuffle=(self.validation_sampler is None),
+    #         num_workers=2,
+    #         pin_memory=False,
+    #         sampler=self.validation_sampler)
 
     def step(self):
         """Runs a training epoch and updates the model parameters."""

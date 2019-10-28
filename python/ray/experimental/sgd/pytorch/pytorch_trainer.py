@@ -12,7 +12,7 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.resources import Resources
-from ray.experimental.sgd.pytorch.pytorch_runner import PyTorchRunner
+from ray.experimental.sgd.pytorch.pytorch_runner_v2 import PyTorchRunner
 from ray.experimental.sgd.pytorch.distributed_pytorch_runner import (
     DistributedPyTorchRunner)
 from ray.experimental.sgd.pytorch import pytorch_utils
@@ -28,15 +28,16 @@ class PyTorchTrainer(object):
     coordinate gradient updates to train the provided model.
     """
 
-    def __init__(self,
-                 model_creator,
-                 data_creator,
-                 optimizer_creator=pytorch_utils.sgd_mse_optimizer,
-                 config=None,
-                 num_replicas=1,
-                 use_gpu=False,
-                 batch_size=16,
-                 backend="auto"):
+    def __init__(
+            self,
+            initializer,
+            train_function,
+            validation_function,
+            config=None,
+            num_replicas=1,
+            use_gpu=False,
+            # batch_size=16,
+            backend="auto"):
         """Sets up the PyTorch trainer.
 
         Args:
@@ -64,7 +65,7 @@ class PyTorchTrainer(object):
                  "For more information, see "
                  "https://github.com/pytorch/examples/issues/467."))
 
-        self.model_creator = model_creator
+        # self.model_creator = model_creator
         self.config = {} if config is None else config
         self.optimizer_timer = utils.TimerStat(window_size=1)
 
@@ -79,31 +80,29 @@ class PyTorchTrainer(object):
                 num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size)
+                Runner.remote(train_function, validation_function, self.config)
             ]
             # Get setup tasks in order to throw errors on failure
-            ray.get(self.workers[0].setup.remote())
+            # ray.get(self.workers[0].setup.remote())
         else:
             # Geneate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
-            # Compute batch size per replica
-            batch_size_per_replica = batch_size // num_replicas
-            if batch_size % num_replicas > 0:
-                new_batch_size = batch_size_per_replica * num_replicas
-                logger.warning(
-                    ("Changing batch size from {old_batch_size} to "
-                     "{new_batch_size} to evenly distribute batches across "
-                     "{num_replicas} replicas.").format(
-                         old_batch_size=batch_size,
-                         new_batch_size=new_batch_size,
-                         num_replicas=num_replicas))
+            # # Compute batch size per replica
+            # batch_size_per_replica = batch_size // num_replicas
+            # if batch_size % num_replicas > 0:
+            #     new_batch_size = batch_size_per_replica * num_replicas
+            #     logger.warning(
+            #         ("Changing batch size from {old_batch_size} to "
+            #          "{new_batch_size} to evenly distribute batches across "
+            #          "{num_replicas} replicas.").format(
+            #              old_batch_size=batch_size,
+            #              new_batch_size=new_batch_size,
+            #              num_replicas=num_replicas))
             # Start workers
             self.workers = [
-                Runner.remote(model_creator, data_creator, optimizer_creator,
-                              self.config, batch_size_per_replica, backend)
-                for i in range(num_replicas)
+                Runner.remote(train_function, validation_function, self.config,
+                              backend) for i in range(num_replicas)
             ]
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
@@ -111,19 +110,19 @@ class PyTorchTrainer(object):
             address = "tcp://{ip}:{port}".format(ip=ip, port=port)
             # Get setup tasks in order to throw errors on failure
             ray.get([
-                worker.setup.remote(address, i, len(self.workers))
+                worker.setup_distributed.remote(address, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
+        ray.get(
+            [worker.apply.remote(initializer) for worker in self.workers])
 
-    def train(self):
+    def train_step(self):
         """Runs a training epoch."""
         with self.optimizer_timer:
-            worker_stats = ray.get([w.step.remote() for w in self.workers])
+            worker_stats = ray.get(
+                [w.train_step.remote() for w in self.workers])
 
-        train_stats = worker_stats[0].copy()
-        train_stats["train_loss"] = np.mean(
-            [s["train_loss"] for s in worker_stats])
-        return train_stats
+        return worker_stats
 
     def validate(self):
         """Evaluates the model on the validation data set."""
@@ -140,27 +139,27 @@ class PyTorchTrainer(object):
         model.load_state_dict(state["model"])
         return model
 
-    def save(self, checkpoint):
-        """Saves the model at the provided checkpoint.
+    # def save(self, checkpoint):
+    #     """Saves the model at the provided checkpoint.
 
-        Args:
-            checkpoint (str): Path to target checkpoint file.
+    #     Args:
+    #         checkpoint (str): Path to target checkpoint file.
 
-        """
-        state = ray.get(self.workers[0].get_state.remote())
-        torch.save(state, checkpoint)
-        return checkpoint
+    #     """
+    #     state = ray.get(self.workers[0].get_state.remote())
+    #     torch.save(state, checkpoint)
+    #     return checkpoint
 
-    def restore(self, checkpoint):
-        """Restores the model from the provided checkpoint.
+    # def restore(self, checkpoint):
+    #     """Restores the model from the provided checkpoint.
 
-        Args:
-            checkpoint (str): Path to target checkpoint file.
+    #     Args:
+    #         checkpoint (str): Path to target checkpoint file.
 
-        """
-        state = torch.load(checkpoint)
-        state_id = ray.put(state)
-        ray.get([worker.set_state.remote(state_id) for worker in self.workers])
+    #     """
+    #     state = torch.load(checkpoint)
+    #     state_id = ray.put(state)
+    #     ray.get([worker.set_state.remote(state_id) for worker in self.workers])
 
     def shutdown(self):
         """Shuts down workers and releases resources."""
