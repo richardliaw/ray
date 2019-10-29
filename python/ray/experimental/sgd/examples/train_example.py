@@ -41,28 +41,22 @@ class LinearDataset(torch.utils.data.Dataset):
 
 
 def initializer(runner):
-    runner.model = nn.Linear(1, 1)
-    runner.criterion = nn.MSELoss()
+    training_set = LinearDataset(2, 5)
+    validation_set = LinearDataset(2, 5, size=400)
+    runner.model = nn.Linear(1, 1).to(runner.device)
+    runner.criterion = nn.MSELoss().to(runner.device)
     runner.optimizer = torch.optim.SGD(runner.model.parameters(), lr=1e-4)
-    runner.training_set = LinearDataset(2, 5)
-    runner.validation_set = LinearDataset(2, 5, size=400)
-    if torch.cuda.is_available():
-        runner.model = runner.model.cuda()
-
-    # logger.debug("Creating optimizer")
-    if torch.cuda.is_available():
-        runner.criterion = runner.criterion.cuda()
 
     # logger.debug("Creating dataset")
     runner.train_loader = torch.utils.data.DataLoader(
-        runner.training_set,
+        training_set,
         batch_size=32,
         shuffle=True,
         num_workers=2,
         pin_memory=False)
 
     runner.validation_loader = torch.utils.data.DataLoader(
-        runner.validation_set,
+        validation_set,
         batch_size=32,
         shuffle=True,
         num_workers=2,
@@ -144,20 +138,19 @@ def validation_function(runner):
             batch_time.update(time.time() - end)
             end = time.time()
 
-    stats = {"batch_time": batch_time.avg, "validation_loss": losses.avg}
-    runner.log_results(DONE=True, **stats)
+    return {"batch_time": batch_time.avg, "validation_loss": losses.avg}
 
 
 def train_example(num_replicas=1, use_gpu=False):
     trainer1 = PyTorchTrainer(
-        initializer,
-        train_function,
-        validation_function,
+        initializer=initializer,
+        train_function=train_function,
         num_replicas=num_replicas,
         use_gpu=use_gpu,
         backend="gloo")
     for i in range(4):
-        print(trainer1.train_step())
+        print(trainer1.step())
+    print(trainer1.apply(validation_function))
     trainer1.shutdown()
     print("success!")
 

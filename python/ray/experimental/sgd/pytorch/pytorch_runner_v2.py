@@ -17,14 +17,17 @@ from ray.experimental.sgd.pytorch import pytorch_utils
 from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
+logger.setLevel("DEBUG")
 
 TIME_THIS_ITER_S = "time_this_iter_s"
+TRAIN_MODE = "__train__"
+VALIDATION_MODE = "__validation__"
 
 
 class PyTorchRunner(object):
     """Manages a PyTorch model for training."""
 
-    def __init__(self, train_function, validation_function, config=None):
+    def __init__(self, loop_function, preinit_hook=None, config=None):
         """Initializes the runner."""
 
         self.config = config or {}
@@ -38,12 +41,12 @@ class PyTorchRunner(object):
             ]
         }
 
-        self._train_function = train_function
-        self._validation_function = validation_function
+        self._loop_function = loop_function
 
         # the runner thread is not started until the first call to _train
-        self._train_runner = None
-        self._validation_runner = None
+        self._runner_thread = None
+        if preinit_hook:
+            preinit_hook(self)
 
     def get_node_ip(self):
         """Returns the IP address of the current node."""
@@ -62,34 +65,16 @@ class PyTorchRunner(object):
             t.reset()
         return stats
 
-    def train_step(self):
-        if self._train_runner is None:
-            self._mode = "TRAIN"
-            self._train_runner = _RunnerThread(
-                lambda: self._train_function(self), self._error_queue)
+    def step(self):
+        if self._runner_thread is None:
+            self._runner_thread = ThreadManager(
+                lambda: self._loop_function(self))
 
-        assert self._validation_mode is False
-        result = self._train_runner.step()
+        result = self._runner_thread.step()
 
         if "DONE" in result:
-            self._train_runner.stop()
-            self._train_runner = None
-            self._mode = None
-        return result
-
-    def validation_step(self):
-        if self._validation_runner is None:
-            self._mode = "VALID"
-            self._validation_runner = _RunnerThread(
-                lambda: self._validation_function(self), self._error_queue)
-
-        assert self._mode == "VALID"
-        result = self._validation_runner.step()
-
-        if "DONE" in result:
-            self._validation_runner.stop()
-            self._validation_runner = None
-            self._mode = None
+            self._runner_thread.stop()
+            self._runner_thread = None
         return result
 
     def checkpoint(self):
@@ -108,9 +93,14 @@ class PyTorchRunner(object):
     def logdir(self):
         return self._logdir
 
-    def log_result(self, **results):
+    def log_results(self, **results):
         """This blocks by default"""
-        self._thread_manager.report(**results)
+        if self._runner_thread is None:
+            logger.warning(
+                "Not logging outside the training function. Please return "
+                "the result instead.")
+            return
+        self._runner_thread.queue_result(**results)
 
 
 # Time between FunctionRunner checks when fetching
@@ -135,8 +125,9 @@ class ThreadManager():
         # Queue for passing results between threads
         self._results_queue = queue.Queue(1)
         self._last_result = {}
+        self._runner = _RunnerThread(entrypoint, self._error_queue)
 
-    def report(self, **results):
+    def queue_result(self, **results):
         assert not isinstance(threading.current_thread(),
                               threading._MainThread)
         assert self._last_report_time is not None, (
@@ -239,6 +230,9 @@ class ThreadManager():
 
         # Check for any errors that might have been missed.
         self.report_thread_runner_error()
+        self._continue_semaphore.release()
+        logger.debug("Waiting for runner to join.")
+        self._runner.join()
 
     def report_thread_runner_error(self, block=False):
         try:

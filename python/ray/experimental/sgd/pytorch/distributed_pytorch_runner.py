@@ -43,9 +43,9 @@ class DistributedPyTorchRunner(PyTorchRunner):
         # self._setup_training()
 
     def setup_distributed(self, url, world_rank, world_size):
-        os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
         with self._timers["setup_proc"]:
             self.world_rank = world_rank
+            self.world_size = world_size
             logger.debug(
                 "Connecting to {} world_rank: {} world_size: {}".format(
                     url, world_rank, world_size))
@@ -100,7 +100,7 @@ class DistributedPyTorchRunner(PyTorchRunner):
     def step(self):
         """Runs a training epoch and updates the model parameters."""
         logger.debug("Starting step")
-        self.train_sampler.set_epoch(self.epoch)
+        # self.train_sampler.set_epoch(self.epoch)
         return super(DistributedPyTorchRunner, self).step()
 
     def get_state(self):

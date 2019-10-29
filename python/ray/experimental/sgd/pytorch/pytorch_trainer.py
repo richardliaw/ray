@@ -20,6 +20,10 @@ from ray.experimental.sgd import utils
 
 logger = logging.getLogger(__name__)
 
+# Test what happens in error
+# Test what happens if DONE is not returned
+# Test what happens if nothing is ever logged.
+
 
 class PyTorchTrainer(object):
     """Train a PyTorch model using distributed PyTorch.
@@ -28,16 +32,14 @@ class PyTorchTrainer(object):
     coordinate gradient updates to train the provided model.
     """
 
-    def __init__(
-            self,
-            initializer,
-            train_function,
-            validation_function,
-            config=None,
-            num_replicas=1,
-            use_gpu=False,
-            # batch_size=16,
-            backend="auto"):
+    def __init__(self,
+                 initializer,
+                 train_function,
+                 preinit_hook=None,
+                 config=None,
+                 num_replicas=1,
+                 use_gpu=False,
+                 backend="auto"):
         """Sets up the PyTorch trainer.
 
         Args:
@@ -74,17 +76,18 @@ class PyTorchTrainer(object):
 
         logger.info("Using {} as backend.".format(backend))
 
-        if num_replicas == 1:
-            # Generate actor class
-            Runner = ray.remote(
-                num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
-            # Start workers
-            self.workers = [
-                Runner.remote(train_function, validation_function, self.config)
-            ]
-            # Get setup tasks in order to throw errors on failure
-            # ray.get(self.workers[0].setup.remote())
-        else:
+        # if False num_replicas == 1:
+        #     # Generate actor class
+        #     Runner = ray.remote(
+        #         num_cpus=1, num_gpus=int(use_gpu))(PyTorchRunner)
+        #     # Start workers
+        #     self.workers = [
+        #         Runner.remote(train_function, preinit_hook, self.config)
+        #     ]
+        #     # Get setup tasks in order to throw errors on failure
+        #     # ray.get(self.workers[0].setup.remote())
+        # else:
+        if True:
             # Geneate actor class
             Runner = ray.remote(
                 num_cpus=1, num_gpus=int(use_gpu))(DistributedPyTorchRunner)
@@ -101,8 +104,11 @@ class PyTorchTrainer(object):
             #              num_replicas=num_replicas))
             # Start workers
             self.workers = [
-                Runner.remote(train_function, validation_function, self.config,
-                              backend) for i in range(num_replicas)
+                Runner.remote(
+                    train_function,
+                    preinit_hook=preinit_hook,
+                    config=self.config,
+                    backend=backend) for i in range(num_replicas)
             ]
             # Compute URL for initializing distributed PyTorch
             ip = ray.get(self.workers[0].get_node_ip.remote())
@@ -113,24 +119,25 @@ class PyTorchTrainer(object):
                 worker.setup_distributed.remote(address, i, len(self.workers))
                 for i, worker in enumerate(self.workers)
             ])
-        ray.get(
-            [worker.apply.remote(initializer) for worker in self.workers])
+        ray.get([worker.apply.remote(initializer) for worker in self.workers])
 
-    def train_step(self):
-        """Runs a training epoch."""
+    def step(self):
+        """Runs training until the next logging step."""
         with self.optimizer_timer:
-            worker_stats = ray.get(
-                [w.train_step.remote() for w in self.workers])
+            worker_stats = ray.get([w.step.remote() for w in self.workers])
 
         return worker_stats
 
-    def validate(self):
-        """Evaluates the model on the validation data set."""
-        worker_stats = ray.get([w.validate.remote() for w in self.workers])
-        validation_stats = worker_stats[0].copy()
-        validation_stats["validation_loss"] = np.mean(
-            [s["validation_loss"] for s in worker_stats])
-        return validation_stats
+    def apply(self, fn):
+        return ray.get([worker.apply.remote(fn) for worker in self.workers])
+
+    # def validate(self):
+    #     """Evaluates the model on the validation data set."""
+    #     worker_stats = ray.get([w.validate.remote() for w in self.workers])
+    #     validation_stats = worker_stats[0].copy()
+    #     validation_stats["validation_loss"] = np.mean(
+    #         [s["validation_loss"] for s in worker_stats])
+    #     return validation_stats
 
     def get_model(self):
         """Returns the learned model."""
