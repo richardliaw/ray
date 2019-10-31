@@ -10,8 +10,8 @@ import uuid
 import time
 import tempfile
 import os
-from python.ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune import TuneError
+from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 from ray.tune.logger import pretty_print, UnifiedLogger
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
@@ -83,7 +83,7 @@ class Trial(object):
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  keep_checkpoints_num=None,
-                 checkpoint_score_attr="",
+                 checkpoint_score_attr=TRAINING_ITERATION,
                  export_formats=None,
                  restore_path=None,
                  trial_name_creator=None,
@@ -131,11 +131,10 @@ class Trial(object):
         self.last_update_time = -float("inf")
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
-
+        newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
         self.checkpoint_manager = CheckpointManager(keep_checkpoints_num,
                                                     checkpoint_score_attr)
-        newest_checkpoint = Checkpoint(Checkpoint.DISK, restore_path)
-        self.checkpoint_manager.add_checkpoint(newest_checkpoint)
+        self.checkpoint_manager.newest_checkpoint = newest_checkpoint
 
         self.export_formats = export_formats
         self.status = Trial.PENDING
@@ -272,19 +271,18 @@ class Trial(object):
     def clear_checkpoint(self):
         self.checkpoint.value = None
 
-    def commit_checkpoint(self, checkpoint):
-        """Attempt to commit checkpoint.
-
-        Disk checkpoints are committed if and only if they are successfully
-        synced down.
+    def on_checkpoint(self, checkpoint):
+        """Attempts to pull and commit checkpoint if necessary.
 
         Args:
             checkpoint (Checkpoint): Checkpoint taken.
         """
         if checkpoint.storage == Checkpoint.DISK:
+            # Force sync down and wait before tracking the new checkpoint. This
+            # prevents attempts to restore from partially synced checkpoints.
             self.result_logger.sync_down()
             self.result_logger.wait()
-        self.checkpoint_manager.add_checkpoint(checkpoint)
+        self.checkpoint_manager.on_checkpoint(checkpoint)
 
     def should_recover(self):
         """Returns whether the trial qualifies for restoring.
