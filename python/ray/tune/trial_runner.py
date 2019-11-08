@@ -333,6 +333,8 @@ class TrialRunner(object):
         elif self.trial_executor.get_running_trials():
             self._process_events()  # blocking
         else:
+            # TODO: FIX. This is misleading now since you can be pending and
+            # still not fail.
             for trial in self._trials:
                 if trial.status == Trial.PENDING:
                     if not self.has_resources(trial.resources):
