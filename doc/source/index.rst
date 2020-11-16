@@ -242,11 +242,12 @@ Papers
 
    tune/index.rst
    tune/key-concepts.rst
-   tune/user-guide.rst
    tune/tutorials/overview.rst
-   tune/examples/index.rst
+   tune/user-guide.rst
    tune/api_docs/overview.rst
    tune/contrib.rst
+
+.. tune/examples/index.rst
 
 .. toctree::
    :hidden:

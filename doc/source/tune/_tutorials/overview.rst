@@ -89,6 +89,7 @@ Take a look at any of the below tutorials to get started with Tune.
    tune-serve-integration-mnist.rst
    tune-xgboost.rst
    tune-wandb.rst
+   _faq.rst
 
 Colab Exercises
 ---------------
@@ -157,3 +158,7 @@ Check out:
 .. _tune-faq:
 
 .. include:: _faq.rst
+
+.. _tune-examples:
+
+.. include:: /tune/examples/index.rst
