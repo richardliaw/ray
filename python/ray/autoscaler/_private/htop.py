@@ -241,10 +241,11 @@ class LogicalView(TUIPart):
 
 
 class DataManager:
-    def __init__(self, url: str, mock_autoscaler=True):
+    def __init__(self, url: str, redis_address="127.0.0.1:6379"):
         self.url = url
 
-        self.mock = os.path.expanduser(os.environ.get("RAY_HTOP_MOCK"))
+        mock = os.environ.get("RAY_HTOP_MOCK")
+        self.mock = os.path.expanduser(mock) if mock else None
 
         self.mock_cache = None
         if self.mock:
@@ -254,9 +255,10 @@ class DataManager:
         self.nodes = []
 
         # Autoscaler info
-        self.ray_address = None
+        self.ray_address = redis_address
         self.redis_client = None
-        self.mock_autoscaler = mock_autoscaler
+        mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
+        self.mock_autoscaler = os.path.expanduser(mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
         self.lm_summary = None
         self.update()
@@ -287,11 +289,11 @@ class DataManager:
         as_dict = None
         if self.mock_autoscaler:
             if isinstance(self.mock_autoscaler, str):
-                with open(self.mock_autoscaler_data) as f:
+                with open(self.mock_autoscaler) as f:
                     as_dict = json.loads(f.read())
         else:
             if not self.redis_client:
-                self._create_redis_client(self.address)
+                self._create_redis_client(self.ray_address)
             status = self.redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
             if status:
                 status = status.decode("utf-8")
