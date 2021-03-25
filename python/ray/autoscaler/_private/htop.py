@@ -20,10 +20,8 @@ from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-import ray.ray_constants as ray_constants
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
 
 try:
     # Windows
@@ -274,15 +272,6 @@ class DataManager:
         self.lm_summary = None
         self.update()
 
-    def _create_redis_client(
-            self, address,
-            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
-        import ray._private.services as services
-        if not address:
-            address = services.get_ray_address_to_use_or_die()
-        redis_client = services.create_redis_client(address, redis_password)
-        self.redis_client = redis_client
-
     def update(self):
         self._load_nodes()
         self._load_autoscaler_state()
@@ -310,25 +299,34 @@ class DataManager:
         self.memory_table = resp_data
 
     def _load_autoscaler_state(self):
+        def camel_to_snake(str):
+            parts = ["_" + i.lower() if i.isupper() else i for i in str]
+            return "".join(parts).lstrip("_")
+
         as_dict = None
         if self.mock_autoscaler:
             if isinstance(self.mock_autoscaler, str):
                 with open(self.mock_autoscaler) as f:
                     as_dict = json.loads(f.read())
         else:
-            if not self.redis_client:
-                self._create_redis_client(self.ray_address)
-            status = self.redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-            if status:
-                status = status.decode("utf-8")
-                as_dict = json.loads(status)
+            resp = requests.get(f"{self.url}/api/cluster_status")
+            resp_json = resp.json()
+            as_dict = resp_json["data"]["clusterStatus"]
 
         if as_dict:
-            self.lm_summary = LoadMetricsSummary(
-                **as_dict["load_metrics_report"])
-            if "autoscaler_report" in as_dict:
-                self.autoscaler_summary = AutoscalerSummary(
-                    **as_dict["autoscaler_report"])
+            load_metrics = as_dict["loadMetricsReport"]
+            load_metrics = {
+                camel_to_snake(k): v
+                for k, v in load_metrics.items()
+            }
+            self.lm_summary = LoadMetricsSummary(**load_metrics)
+            if "autoscalingStatus" in as_dict:
+                autoscaling_status = as_dict["autoscalingStatus"]
+                autoscaling_status = {
+                    camel_to_snake(k): v
+                    for k, v in autoscaling_status.items()
+                }
+                self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
             # TODO: process the autoscaler data.
 
 
