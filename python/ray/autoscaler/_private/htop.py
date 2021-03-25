@@ -179,18 +179,26 @@ class Footer(TUIPart):
 
 
 class NodeInfoView(TUIPart):
+    def __init__(self, data_manager: "DataManager"):
+        super(NodeInfoView, self).__init__(data_manager)
+        self.sort_by = "cpu"
+
     def __rich__(self) -> Layout:
         layout = Layout()
 
-        table = NodeTable(self.data_manager)
+        table = NodeTable(self.data_manager, self.sort_by)
         layout.update(Panel(table, title="Cluster node overview"))
 
         return layout
 
 
 class NodeTable(TUIPart):
-    def __init__(self, data_manager: "DataManager"):
+    def __init__(self,
+                 data_manager: "DataManager",
+                 sort_by: Optional[str] = None):
         super(NodeTable, self).__init__(data_manager)
+
+        self.sort_by = sort_by
 
     def __rich__(self) -> Table:
         table = Table(show_header=True, header_style="bold magenta")
@@ -209,12 +217,15 @@ class NodeTable(TUIPart):
         table.add_column("Errors", justify="center")
 
         for node in self.data_manager.nodes:
-            table.add_row(*node.node_row(), end_section=not node.expanded)
+            table.add_row(
+                *node.node_row(extra=None)[1:], end_section=not node.expanded)
 
             if node.expanded:
-                workers_rows = list(node.worker_rows())
-                for i, row in enumerate(workers_rows):
-                    table.add_row(*row, end_section=i == len(workers_rows) - 1)
+                workers_rows = list(node.worker_rows(extra=self.sort_by))
+                for i, row in enumerate(
+                        sorted(workers_rows, key=lambda item: -item[0])):
+                    table.add_row(
+                        *row[1:], end_section=i == len(workers_rows) - 1)
 
         return table
 
@@ -232,8 +243,8 @@ class DataManager:
     def __init__(self, url: str, mock_autoscaler=True):
         self.url = url
 
-        self.mock = os.environ.get("RAY_HTOP_MOCK")
-        # self.mock = os.path.expanduser("~/coding/sandbox/out2.json")
+        self.mock = os.path.expanduser(os.environ.get("RAY_HTOP_MOCK"))
+        self.mock_cache = None
 
         self.nodes = []
 
@@ -256,11 +267,15 @@ class DataManager:
 
     def update(self):
         if self.mock:
-            with open(self.mock, "rt") as f:
-                resp_json = json.load(f)
+            if not self.mock_cache:
+                with open(self.mock, "rt") as f:
+                    self.mock_cache = json.load(f)
+            resp_json = self.mock_cache
+            time.sleep(0.1)
         else:
             resp = requests.get(f"{self.url}/nodes?view=details")
             resp_json = resp.json()
+
         resp_data = resp_json["data"]
 
         self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
@@ -360,7 +375,10 @@ class Node:
             cpu_progress.update(cpu_task, completed=worker["cpuPercent"])
             memory_progress.update(memory_task, completed=memory_percent)
 
-    def node_row(self) -> Tuple:
+    def node_row(self, extra: Optional[str] = None) -> Tuple:
+        """Create node row for table.
+
+        First element is ``extra`` element, used for sorting."""
         num_workers = len(self.workers)
         num_cores, num_cpus = self.cpus
 
@@ -368,7 +386,13 @@ class Node:
 
         sent, received = self.network
 
+        if extra == "cpu":
+            extra_val = self.cpu
+        else:
+            extra_val = None
+
         return (
+            extra_val,
             Text(self.hostname, justify="left"),
             Text(f"{num_workers} workers / {num_cores} cores", justify="left"),
             Text(f"{_fmt_timedelta(uptime)}", justify="right"),
@@ -403,7 +427,10 @@ class Node:
             (disk_progress, disk_task),
         )
 
-    def worker_rows(self) -> Iterable[Tuple]:
+    def worker_rows(self, extra: Optional[str] = None) -> Iterable[Tuple]:
+        """Create worker row for table.
+
+        First element is ``extra`` element, used for sorting."""
         for worker in self.workers:
             uptime = datetime.timedelta(seconds=self.now -
                                         worker["createTime"])
@@ -417,7 +444,13 @@ class Node:
                 (disk_progress, disk_task) = \
                 self.worker_progresses[worker["pid"]]
 
+            if extra == "cpu":
+                extra_val = worker["cpuPercent"]
+            else:
+                extra_val = None
+
             yield (
+                extra_val,
                 Text(str(worker["pid"]), justify="right"),
                 Text(worker["cmdline"][0], justify="right", no_wrap=True),
                 Text(f"{_fmt_timedelta(uptime)}", justify="right"),
