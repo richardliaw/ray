@@ -1,3 +1,4 @@
+import json
 import os  # noqa: F401
 from queue import Empty, Queue
 from typing import Dict, Iterable, Optional, Tuple
@@ -228,7 +229,7 @@ class LogicalView(TUIPart):
 
 
 class DataManager:
-    def __init__(self, url: str, mock_autoscaler_data=None):
+    def __init__(self, url: str, mock_autoscaler=True):
         self.url = url
 
         self.mock = None
@@ -237,13 +238,16 @@ class DataManager:
         self.nodes = []
 
         # Autoscaler info
+        self.ray_address = None
         self.redis_client = None
-        self.mock_autoscaler_data = mock_autoscaler_data
+        self.mock_autoscaler = mock_autoscaler
         self.autoscaler_summary = None
         self.lm_summary = None
         self.update()
 
-    def _create_redis_client(self, address, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
+    def _create_redis_client(
+            self, address,
+            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
         import ray._private.services as services
         if not address:
             address = services.get_ray_address_to_use_or_die()
@@ -252,8 +256,6 @@ class DataManager:
 
     def update(self):
         if self.mock:
-            import json
-
             with open(self.mock, "rt") as f:
                 resp_json = json.load(f)
         else:
@@ -267,16 +269,18 @@ class DataManager:
 
     def _load_autoscaler_state(self):
         as_dict = None
-        if self.mock_autoscaler_data:
-            with open(self.mock_autoscaler_data) as f:
-                as_dict = json.loads(f.read())
+        if self.mock_autoscaler:
+            if isinstance(self.mock_autoscaler, str):
+                with open(self.mock_autoscaler_data) as f:
+                    as_dict = json.loads(f.read())
         else:
             if not self.redis_client:
-                self._create_redis_client()
+                self._create_redis_client(self.address)
             status = self.redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
             if status:
                 status = status.decode("utf-8")
                 as_dict = json.loads(status)
+
         if as_dict:
             self.lm_summary = LoadMetricsSummary(
                 **as_dict["load_metrics_report"])
