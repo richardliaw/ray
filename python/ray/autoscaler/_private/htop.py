@@ -1,3 +1,4 @@
+import os  # noqa: F401
 from queue import Empty, Queue
 from typing import Dict, Iterable, Optional, Tuple
 from enum import Enum, auto
@@ -225,12 +226,21 @@ class DataManager:
     def __init__(self, url: str):
         self.url = url
 
+        self.mock = None
+        # self.mock = os.path.expanduser("~/coding/sandbox/out2.json")
+
         self.nodes = []
         self.update()
 
     def update(self):
-        resp = requests.get(f"{self.url}/nodes?view=details")
-        resp_json = resp.json()
+        if self.mock:
+            import json
+
+            with open(self.mock, "rt") as f:
+                resp_json = json.load(f)
+        else:
+            resp = requests.get(f"{self.url}/nodes?view=details")
+            resp_json = resp.json()
         resp_data = resp_json["data"]
 
         self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
@@ -365,7 +375,7 @@ class Node:
 
             yield (
                 Text(str(worker["pid"]), justify="right"),
-                Text(worker["cmdline"][0], justify="right", nowrap=True),
+                Text(worker["cmdline"][0], justify="right", no_wrap=True),
                 Text(f"{_fmt_timedelta(uptime)}", justify="right"),
                 cpu_progress,
                 memory_progress,
