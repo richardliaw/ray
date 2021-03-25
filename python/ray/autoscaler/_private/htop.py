@@ -296,6 +296,8 @@ class DataManager:
         else:
             resp = requests.get(f"{self.url}/memory/memory_table")
             resp_json = resp.json()
+        resp_data = resp_json["data"]
+        self.memory_table = resp_data
 
     def _load_autoscaler_state(self):
         as_dict = None
