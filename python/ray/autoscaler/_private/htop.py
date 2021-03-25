@@ -9,7 +9,9 @@ import sys
 import threading
 import time
 
+import ray
 import requests
+from ray.state import GlobalState
 from rich import get_console
 from rich.columns import Columns
 from rich.console import RenderGroup
@@ -20,8 +22,16 @@ from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
 
+import ray.ray_constants as ray_constants
+from ray.internal.internal_api import node_stats
+
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
+
+from ray.new_dashboard.memory_utils import construct_memory_table, \
+    get_group_by_type, get_sorting_type
+from ray.new_dashboard.modules.stats_collector.stats_collector_head import \
+    node_stats_to_dict
 
 try:
     # Windows
@@ -241,9 +251,107 @@ class MemoryView(TUIPart):
     def __rich__(self) -> Layout:
         layout = Layout()
 
-        layout.update(Panel(Text("No content"), title="Logical  view"))
+        layout.update(
+            Panel(MemoryTable(self.data_manager), title="Memory view"))
 
         return layout
+
+
+class MemoryTable(TUIPart):
+    def __rich__(self) -> Table:
+        table = Table(
+            show_header=False,
+            box=None,
+            show_edge=False,
+        )
+        table.add_column()
+        table.add_column()
+
+        for row in self.summary_row():
+            table.add_row(*row)
+
+        return table
+
+    def summary_row(self, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE"):
+        group_by, sort_by = get_group_by_type(group_by), get_sorting_type(
+            sort_by)
+        memory_table = construct_memory_table(self.data_manager.memory_data,
+                                              group_by, sort_by).as_dict()
+        for key, group in memory_table["group"].items():
+            yield self.summary_table(group), self.object_table(group)
+
+    def summary_table(self, group) -> Table:
+        table = Table(
+            title="Node summary",
+            show_header=False,
+            expand=False,
+            pad_edge=True,
+            padding=(0, 1))
+        table.add_column()
+        table.add_column()
+        table.add_column()
+        table.add_column()
+
+        columns = [
+            "Memory used",
+            "Local refs",
+            "Pinned count",
+            "Pending tasks",
+            "Captured in objs",
+            "Actor handles",
+        ]
+
+        colvals = list(zip(columns, self.summary_data(group["summary"])))
+
+        for i in range(3):
+            table.add_row(
+                Text(colvals[i][0], style="bold magenta", justify="right"),
+                colvals[i][1],
+                Text(colvals[i + 3][0], style="bold magenta", justify="right"),
+                colvals[i + 3][1],
+            )
+
+        return table
+
+    def summary_data(self, summary):
+        return (
+            Text(_fmt_bytes(summary["total_object_size"]), justify="right"),
+            Text(str(summary["total_local_ref_count"]), justify="right"),
+            Text(str(summary["total_pinned_in_memory"]), justify="right"),
+            Text(str(summary["total_used_by_pending_task"]), justify="right"),
+            Text(str(summary["total_pinned_in_memory"]), justify="right"),
+            Text(str(summary["total_actor_handles"]), justify="right"),
+        )
+
+    def object_table(self, group) -> Table:
+        table = Table(
+            show_header=True,
+            title="Node objects",
+            header_style="bold magenta")
+        table.add_column("IP", justify="center")
+        table.add_column("PID", justify="center")
+        table.add_column("Type", justify="center")
+        table.add_column("Call site", justify="center")
+        table.add_column("Size", justify="center")
+        table.add_column("Reference Type", justify="center")
+        table.add_column("Object Reference", justify="center")
+
+        for row in self.object_rows(group["entries"]):
+            table.add_row(*row)
+
+        return table
+
+    def object_rows(self, entries):
+        for entry in entries:
+            yield (
+                Text(entry["node_ip_address"], justify="right"),
+                Text(str(entry["pid"]), justify="right"),
+                Text(entry["type"], justify="right"),
+                Text(entry["call_site"], justify="right"),
+                Text(_fmt_bytes(entry["object_size"]), justify="right"),
+                Text(entry["reference_type"], justify="right"),
+                Text(entry["object_ref"], justify="right"),
+            )
 
 
 class DataManager:
@@ -263,14 +371,34 @@ class DataManager:
         self.nodes = []
 
         # Autoscaler info
-        self.ray_address = redis_address
+        self.ray_address = redis_address or \
+            ray.services.get_ray_address_to_use_or_die()
         self.redis_client = None
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
         self.mock_autoscaler = os.path.expanduser(
             mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
         self.lm_summary = None
+
+        self.memory_data = None
+
         self.update()
+
+    def _create_redis_client(
+            self, address,
+            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
+        import ray._private.services as services
+        if not address:
+            address = services.get_ray_address_to_use_or_die()
+        redis_client = services.create_redis_client(address, redis_password)
+        self.redis_client = redis_client
+
+    def _create_global_state(
+            self, address,
+            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
+        state = GlobalState()
+        state._initialize_global_state(address, redis_password)
+        return state
 
     def update(self):
         self._load_nodes()
@@ -290,13 +418,24 @@ class DataManager:
 
     def _load_memory_info(self):
         # Fetch core memory worker stats, store as a dictionary
-        if self.mock_memory_cache:
-            resp_json = self.mock_memory_cache
-        else:
-            resp = requests.get(f"{self.url}/memory/memory_table")
-            resp_json = resp.json()
-        resp_data = resp_json["data"]
-        self.memory_table = resp_data
+        state = self._create_global_state(self.ray_address)
+        core_worker_stats = []
+        for raylet in state.node_table():
+            stats = node_stats_to_dict(
+                node_stats(raylet["NodeManagerAddress"],
+                           raylet["NodeManagerPort"]))
+            core_worker_stats.extend(stats["coreWorkersStats"])
+            assert type(stats) is dict and "coreWorkersStats" in stats
+
+        self.memory_data = core_worker_stats
+
+        # if self.mock_memory_cache:
+        #     resp_json = self.mock_memory_cache
+        # else:
+        #     resp = requests.get(f"{self.url}/memory/memory_table")
+        #     resp_json = resp.json()
+        # resp_data = resp_json["data"]
+        # self.memory_table = resp_data
 
     def _load_autoscaler_state(self):
         def camel_to_snake(str):
@@ -328,6 +467,10 @@ class DataManager:
                 }
                 self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
             # TODO: process the autoscaler data.
+
+    def _load_memory_state(self):
+        if not self.redis_client:
+            self._create_redis_client(self.ray_address)
 
 
 class StaticProgress:
