@@ -25,6 +25,7 @@ from ray.autoscaler._private.commands import (
     get_local_dump_archive, get_cluster_dump_archive, debug_status,
     RUN_ENV_TYPES)
 from ray.autoscaler._private.constants import RAY_PROCESSES
+from ray.autoscaler._private.htop import live
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -1590,6 +1591,11 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
         click.echo(f"Created archive: {archive_path}")
     else:
         click.echo("Could not create archive.")
+
+
+@cli.command()
+def htop():
+    live()
 
 
 @cli.command(hidden=True)
