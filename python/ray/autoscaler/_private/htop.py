@@ -10,11 +10,12 @@ import threading
 import time
 
 import requests
+from rich import get_console
 from rich.columns import Columns
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, Progress, TextColumn
+from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
 
@@ -244,9 +245,12 @@ class DataManager:
         self.url = url
 
         mock = os.environ.get("RAY_HTOP_MOCK")
-
         self.mock = os.path.expanduser(mock) if mock else None
+
         self.mock_cache = None
+        if self.mock:
+            with open(self.mock, "rt") as f:
+                self.mock_cache = json.load(f)
 
         self.nodes = []
 
@@ -269,12 +273,8 @@ class DataManager:
         self.redis_client = redis_client
 
     def update(self):
-        if self.mock:
-            if not self.mock_cache:
-                with open(self.mock, "rt") as f:
-                    self.mock_cache = json.load(f)
+        if self.mock_cache:
             resp_json = self.mock_cache
-            time.sleep(0.1)
         else:
             resp = requests.get(f"{self.url}/nodes?view=details")
             resp_json = resp.json()
@@ -308,26 +308,56 @@ class DataManager:
             # TODO: process the autoscaler data.
 
 
+class StaticProgress:
+    def __init__(self, *columns, task):
+        self.columns = columns
+        self.task = task
+
+    def __rich__(self):
+        table_columns = [
+            column.get_table_column().copy() for column in self.columns
+        ]
+
+        table = Table.grid(*table_columns, padding=(0, 1), expand=True)
+        table.add_row(*((column.format(
+            task=self.task) if isinstance(column, str) else column(self.task))
+                        for column in self.columns))
+        return table
+
+
 class Node:
     percent_only = (
         BarColumn(),
         TextColumn("[progress.percentage]{task.percentage:>3.1f}%"))
 
-    def __init__(self, data: Optional[Dict] = None):
+    def _make_task(self):
+        task = Task(
+            id=TaskID(0),
+            description="",
+            total=100,
+            completed=0,
+            _get_time=get_console().get_time)
+        task.start_time = 0
+        return task
 
+    def __init__(self, data: Optional[Dict] = None):
         self.expanded = True
 
-        self.cpu_progress = Progress(*self.percent_only)
-        self.cpu_task = self.cpu_progress.add_task("CPU", total=100)
+        self.cpu_task = self._make_task()
+        self.cpu_progress = StaticProgress(
+            *self.percent_only, task=self.cpu_task)
 
-        self.memory_progress = Progress(*self.percent_only)
-        self.memory_task = self.memory_progress.add_task("Memory", total=100)
+        self.memory_task = self._make_task()
+        self.memory_progress = StaticProgress(
+            *self.percent_only, task=self.memory_task)
 
-        self.plasma_progress = Progress(*self.percent_only)
-        self.plasma_task = self.plasma_progress.add_task("Plasma", total=100)
+        self.plasma_task = self._make_task()
+        self.plasma_progress = StaticProgress(
+            *self.percent_only, task=self.plasma_task)
 
-        self.disk_progress = Progress(*self.percent_only)
-        self.disk_task = self.disk_progress.add_task("Disk", total=100)
+        self.disk_task = self._make_task()
+        self.disk_progress = StaticProgress(
+            *self.percent_only, task=self.disk_task)
 
         self.worker_progresses = {}
 
@@ -350,16 +380,15 @@ class Node:
         self.logCount = data["logCount"]
         self.errorCount = data["errorCount"]
 
-        self.cpu_progress.update(self.cpu_task, completed=self.cpu)
-        self.memory_progress.update(self.memory_task, completed=self.mem[2])
+        self.cpu_task.completed = self.cpu
+        self.memory_task.completed = self.mem[2]
 
         plasma_used = self.raylet["objectStoreUsedMemory"]
         plasma_avail = self.raylet["objectStoreAvailableMemory"]
-        self.plasma_progress.update(
-            self.plasma_task, completed=plasma_used / plasma_avail / 100)
 
-        self.disk_progress.update(
-            self.disk_task, completed=self.disk["/"]["percent"])
+        self.plasma_task.completed = plasma_used / plasma_avail / 100
+
+        self.disk_task.completed = self.disk["/"]["percent"]
 
         for worker in self.workers:
             pid = worker["pid"]
@@ -368,15 +397,13 @@ class Node:
                 self._make_worker_progresses(pid)
 
             (cpu_progress, cpu_task), \
-                (memory_progress, memory_task), \
-                (plasma_progress, plasma_task), \
-                (disk_progress, disk_task) = self.worker_progresses[pid]
+                (memory_progress, memory_task) = self.worker_progresses[pid]
 
             memory_percent = worker["memoryInfo"]["rss"] / \
                 worker["memoryInfo"]["vms"]
 
-            cpu_progress.update(cpu_task, completed=worker["cpuPercent"])
-            memory_progress.update(memory_task, completed=memory_percent)
+            cpu_task.completed = worker["cpuPercent"]
+            memory_task.completed = memory_percent
 
     def node_row(self, extra: Optional[str] = None) -> Tuple:
         """Create node row for table.
@@ -411,23 +438,15 @@ class Node:
         )
 
     def _make_worker_progresses(self, pid: int):
-        cpu_progress = Progress(*self.percent_only)
-        cpu_task = cpu_progress.add_task("CPU", total=100)
+        cpu_task = self._make_task()
+        cpu_progress = StaticProgress(*self.percent_only, task=cpu_task)
 
-        memory_progress = Progress(*self.percent_only)
-        memory_task = memory_progress.add_task("Memory", total=100)
-
-        plasma_progress = Progress(*self.percent_only)
-        plasma_task = plasma_progress.add_task("Plasma", total=100)
-
-        disk_progress = Progress(*self.percent_only)
-        disk_task = disk_progress.add_task("Disk", total=100)
+        memory_task = self._make_task()
+        memory_progress = StaticProgress(*self.percent_only, task=memory_task)
 
         self.worker_progresses[pid] = (
             (cpu_progress, cpu_task),
             (memory_progress, memory_task),
-            (plasma_progress, plasma_task),
-            (disk_progress, disk_task),
         )
 
     def worker_rows(self, extra: Optional[str] = None) -> Iterable[Tuple]:
@@ -442,9 +461,7 @@ class Node:
                 self._make_worker_progresses(worker["pid"])
 
             (cpu_progress, cpu_task), \
-                (memory_progress, memory_task), \
-                (plasma_progress, plasma_task), \
-                (disk_progress, disk_task) = \
+                (memory_progress, memory_task) = \
                 self.worker_progresses[worker["pid"]]
 
             if extra == "cpu":
@@ -460,8 +477,8 @@ class Node:
                 cpu_progress,
                 memory_progress,
                 "",
-                plasma_progress,
-                disk_progress,
+                "",
+                "",
                 "",
                 "",
                 "",
@@ -529,6 +546,7 @@ def live():
             display.display(),
             refresh_per_second=4,
             screen=False,
+            transient=False,
             redirect_stderr=False,
             redirect_stdout=False) as live:
         while not should_stop.is_set():
