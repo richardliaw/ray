@@ -205,6 +205,16 @@ class LogicalView(TUIPart):
 
 class DataManager:
     def __init__(self):
+        self.nodes = []
+        self.update()
+
+    def update(self):
+        # Todo: fetch data
+        # from ray.new_dashboard.datacenter import DataOrganizer
+        # import asyncio
+        # node_details = asyncio.run(DataOrganizer.get_all_node_details())
+        # raise RuntimeError(node_details)
+
         import json
         with open("/tmp/test.json", "rt") as f:
             self.nodes = [Node(json.load(f))]
