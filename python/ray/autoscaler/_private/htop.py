@@ -271,7 +271,7 @@ class Node:
         self.disk = data["disk"]
         self.hostname = data["hostname"]
         self.mem = data["mem"]
-        self.net = data["net"]
+        self.network = data["network"]
         self.now = data["now"]
         self.raylet = data["raylet"]
 
@@ -312,7 +312,7 @@ class Node:
 
         uptime = datetime.timedelta(seconds=self.now - self.bootTime)
 
-        sent, received = self.net
+        sent, received = self.network
 
         return (
             Text(self.hostname, justify="left"),
@@ -365,7 +365,7 @@ class Node:
 
             yield (
                 Text(str(worker["pid"]), justify="right"),
-                Text(worker["cmdline"][0], justify="right"),
+                Text(worker["cmdline"][0], justify="right", nowrap=True),
                 Text(f"{_fmt_timedelta(uptime)}", justify="right"),
                 cpu_progress,
                 memory_progress,
