@@ -12,6 +12,7 @@ import time
 import requests
 from rich import get_console
 from rich.columns import Columns
+from rich.console import RenderGroup
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -258,6 +259,7 @@ class DataManager:
         if self.mock:
             with open(self.mock, "rt") as f:
                 self.mock_cache = json.load(f)
+                self.mock_cache["data"]["clients"] *= 2
 
         self.nodes = []
 
@@ -359,6 +361,8 @@ class Node:
         self.memory_progress = StaticProgress(
             *self.percent_only, task=self.memory_task)
 
+        self.gpu_task_progresses = []
+
         self.plasma_task = self._make_task()
         self.plasma_progress = StaticProgress(
             *self.percent_only, task=self.plasma_task)
@@ -380,8 +384,8 @@ class Node:
         self.cpus = data["cpus"]
         self.disk = data["disk"]
         self.hostname = data["hostname"]
-        self.mem = data["mem"]
-        self.network = data["network"]
+        self.mem = data["mem"]  # total, available, pct, used
+        self.network = data["network"]  # sent, recv
         self.now = data["now"]
         self.raylet = data["raylet"]
 
@@ -390,6 +394,17 @@ class Node:
 
         self.cpu_task.completed = self.cpu
         self.memory_task.completed = self.mem[2]
+
+        for i, gpu_dict in enumerate(data["gpus"]):
+            if i >= len(self.gpu_task_progresses):
+                task = self._make_task()
+                self.gpu_task_progresses.append((task,
+                                                 StaticProgress(
+                                                     *self.percent_only,
+                                                     task=task)))
+            task, progress = self.gpu_task_progresses[i]
+            task.completed = gpu_dict["memory_used"]
+            task.total = gpu_dict["memory_total"]
 
         plasma_used = self.raylet["objectStoreUsedMemory"]
         plasma_avail = self.raylet["objectStoreAvailableMemory"]
@@ -407,8 +422,7 @@ class Node:
             (cpu_progress, cpu_task), \
                 (memory_progress, memory_task) = self.worker_progresses[pid]
 
-            memory_percent = worker["memoryInfo"]["rss"] / \
-                worker["memoryInfo"]["vms"]
+            memory_percent = worker["memoryInfo"]["rss"] / self.mem[0]
 
             cpu_task.completed = worker["cpuPercent"]
             memory_task.completed = memory_percent
@@ -437,7 +451,8 @@ class Node:
             Text(f"{_fmt_timedelta(uptime)}", justify="right"),
             self.cpu_progress,
             self.memory_progress,
-            "",
+            RenderGroup(
+                *[progress for _, progress in self.gpu_task_progresses]),
             self.plasma_progress,
             self.disk_progress,
             Text(_fmt_bytes(sent), justify="right"),
@@ -476,8 +491,7 @@ class Node:
             if extra == "cpu":
                 extra_val = worker["cpuPercent"]
             elif extra == "memory":
-                extra_val = worker["memoryInfo"]["rss"] / \
-                                 worker["memoryInfo"]["vms"]
+                extra_val = worker["memoryInfo"]["rss"] / self.mem[0]
             else:
                 extra_val = 0
 
