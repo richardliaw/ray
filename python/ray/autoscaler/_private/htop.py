@@ -1,5 +1,5 @@
 from queue import Empty, Queue
-from typing import Dict, Optional, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 from enum import Enum, auto
 
 import datetime
@@ -7,6 +7,7 @@ import sys
 import threading
 import time
 
+import requests
 from rich.columns import Columns
 from rich.layout import Layout
 from rich.live import Live
@@ -52,6 +53,18 @@ def _fmt_bytes(bytes: float) -> str:
         times += 1
 
     return f"{keep:.2f} {suffix[times-1]}"
+
+
+def _fmt_timedelta(delta: datetime.timedelta):
+    """Pretty format timedelta"""
+    h = int(delta.seconds // 3600)
+    m = int(delta.seconds / 60 % 60)
+    s = int(delta.seconds % 60)
+
+    if delta.days:
+        return f"{delta.days}:{h:02d}:{m:02d}:{s:02d}"
+
+    return f"{h:02d}:{m:02d}:{s:02d}"
 
 
 class Page(Enum):
@@ -177,7 +190,7 @@ class NodeTable(TUIPart):
 
         table.add_column("Host", justify="center")
         table.add_column("PID", justify="center")
-        table.add_column("Uptime (s)", justify="center")
+        table.add_column("Uptime", justify="center")
         table.add_column("CPU", justify="center")
         table.add_column("RAM", justify="center")
         table.add_column("GPU", justify="center")
@@ -189,7 +202,12 @@ class NodeTable(TUIPart):
         table.add_column("Errors", justify="center")
 
         for node in self.data_manager.nodes:
-            table.add_row(*node.node_row())
+            table.add_row(*node.node_row(), end_section=not node.expanded)
+
+            if node.expanded:
+                workers_rows = list(node.worker_rows())
+                for i, row in enumerate(workers_rows):
+                    table.add_row(*row, end_section=i == len(workers_rows) - 1)
 
         return table
 
@@ -204,39 +222,42 @@ class LogicalView(TUIPart):
 
 
 class DataManager:
-    def __init__(self):
+    def __init__(self, url: str):
+        self.url = url
+
         self.nodes = []
         self.update()
 
     def update(self):
-        # Todo: fetch data
-        # from ray.new_dashboard.datacenter import DataOrganizer
-        # import asyncio
-        # node_details = asyncio.run(DataOrganizer.get_all_node_details())
-        # raise RuntimeError(node_details)
+        resp = requests.get(f"{self.url}/nodes?view=details")
+        resp_json = resp.json()
+        resp_data = resp_json["data"]
 
-        import json
-        with open("/tmp/test.json", "rt") as f:
-            self.nodes = [Node(json.load(f))]
+        self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
 
 
 class Node:
-    def __init__(self, data: Optional[Dict] = None):
-        percent_only = (
-            BarColumn(),
-            TextColumn("[progress.percentage]{task.percentage:>3.1f}%"))
+    percent_only = (
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"))
 
-        self.cpu_progress = Progress(*percent_only)
+    def __init__(self, data: Optional[Dict] = None):
+
+        self.expanded = True
+
+        self.cpu_progress = Progress(*self.percent_only)
         self.cpu_task = self.cpu_progress.add_task("CPU", total=100)
 
-        self.memory_progress = Progress(*percent_only)
+        self.memory_progress = Progress(*self.percent_only)
         self.memory_task = self.memory_progress.add_task("Memory", total=100)
 
-        self.plasma_progress = Progress(*percent_only)
+        self.plasma_progress = Progress(*self.percent_only)
         self.plasma_task = self.plasma_progress.add_task("Plasma", total=100)
 
-        self.disk_progress = Progress(*percent_only)
+        self.disk_progress = Progress(*self.percent_only)
         self.disk_task = self.disk_progress.add_task("Disk", total=100)
+
+        self.worker_progresses = {}
 
         if data:
             self.update(data)
@@ -268,6 +289,23 @@ class Node:
         self.disk_progress.update(
             self.disk_task, completed=self.disk["/"]["percent"])
 
+        for worker in self.workers:
+            pid = worker["pid"]
+
+            if pid not in self.worker_progresses:
+                self._make_worker_progresses(pid)
+
+            (cpu_progress, cpu_task), \
+                (memory_progress, memory_task), \
+                (plasma_progress, plasma_task), \
+                (disk_progress, disk_task) = self.worker_progresses[pid]
+
+            memory_percent = worker["memoryInfo"]["rss"] / \
+                worker["memoryInfo"]["vms"]
+
+            cpu_progress.update(cpu_task, completed=worker["cpuPercent"])
+            memory_progress.update(memory_task, completed=memory_percent)
+
     def node_row(self) -> Tuple:
         num_workers = len(self.workers)
         num_cores, num_cpus = self.cpus
@@ -279,7 +317,7 @@ class Node:
         return (
             Text(self.hostname, justify="left"),
             Text(f"{num_workers} workers / {num_cores} cores", justify="left"),
-            Text(f"{uptime} seconds", justify="left"),
+            Text(f"{_fmt_timedelta(uptime)}", justify="right"),
             self.cpu_progress,
             self.memory_progress,
             "",
@@ -290,6 +328,55 @@ class Node:
             Text(str(self.logCount), justify="right"),
             Text(str(self.errorCount), justify="right"),
         )
+
+    def _make_worker_progresses(self, pid: int):
+        cpu_progress = Progress(*self.percent_only)
+        cpu_task = cpu_progress.add_task("CPU", total=100)
+
+        memory_progress = Progress(*self.percent_only)
+        memory_task = memory_progress.add_task("Memory", total=100)
+
+        plasma_progress = Progress(*self.percent_only)
+        plasma_task = plasma_progress.add_task("Plasma", total=100)
+
+        disk_progress = Progress(*self.percent_only)
+        disk_task = disk_progress.add_task("Disk", total=100)
+
+        self.worker_progresses[pid] = (
+            (cpu_progress, cpu_task),
+            (memory_progress, memory_task),
+            (plasma_progress, plasma_task),
+            (disk_progress, disk_task),
+        )
+
+    def worker_rows(self) -> Iterable[Tuple]:
+        for worker in self.workers:
+            uptime = datetime.timedelta(seconds=self.now -
+                                        worker["createTime"])
+
+            if not worker["pid"] in self.worker_progresses:
+                self._make_worker_progresses(worker["pid"])
+
+            (cpu_progress, cpu_task), \
+                (memory_progress, memory_task), \
+                (plasma_progress, plasma_task), \
+                (disk_progress, disk_task) = \
+                self.worker_progresses[worker["pid"]]
+
+            yield (
+                Text(str(worker["pid"]), justify="right"),
+                Text(worker["cmdline"][0], justify="right"),
+                Text(f"{_fmt_timedelta(uptime)}", justify="right"),
+                cpu_progress,
+                memory_progress,
+                "",
+                plasma_progress,
+                disk_progress,
+                "",
+                "",
+                "",
+                "",
+            )
 
 
 class DisplayController:
@@ -342,7 +429,7 @@ def live():
     should_stop = threading.Event()
     event_queue = Queue()
 
-    data_manager = DataManager()
+    data_manager = DataManager("http://localhost:8265")
     display = Display(data_manager, event_queue)
 
     controller = DisplayController(display, should_stop, event_queue)
@@ -355,7 +442,8 @@ def live():
             redirect_stderr=False,
             redirect_stdout=False) as live:
         while not should_stop.is_set():
-            time.sleep(0.25)
+            time.sleep(.25)
+            data_manager.update()
             display.handle_queue()
             live.update(display.display())
 
