@@ -256,6 +256,7 @@ class DataManager:
         self.mock = os.path.expanduser(mock) if mock else None
 
         self.mock_cache = None
+        self.mock_memory_cache = None
         if self.mock:
             with open(self.mock, "rt") as f:
                 self.mock_cache = json.load(f)
@@ -283,6 +284,11 @@ class DataManager:
         self.redis_client = redis_client
 
     def update(self):
+        self._load_nodes()
+        self._load_autoscaler_state()
+        self._load_memory_info()
+
+    def _load_nodes(self):
         if self.mock_cache:
             resp_json = self.mock_cache
         else:
@@ -293,7 +299,15 @@ class DataManager:
 
         self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
 
-        self._load_autoscaler_state()
+    def _load_memory_info(self):
+        # Fetch core memory worker stats, store as a dictionary
+        if self.mock_memory_cache:
+            resp_json = self.mock_memory_cache
+        else:
+            resp = requests.get(f"{self.url}/memory/memory_table")
+            resp_json = resp.json()
+        resp_data = resp_json["data"]
+        self.memory_table = resp_data
 
     def _load_autoscaler_state(self):
         as_dict = None
