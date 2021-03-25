@@ -15,6 +15,11 @@ from rich.progress import BarColumn, Progress, TextColumn
 from rich.table import Table
 from rich.text import Text
 
+import ray.ray_constants as ray_constants
+from ray.autoscaler._private.load_metrics import LoadMetricsSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS
+
 try:
     # Windows
     import msvcrt
@@ -204,9 +209,23 @@ class LogicalView(TUIPart):
 
 
 class DataManager:
-    def __init__(self):
+    def __init__(self, mock_autoscaler_data=None):
+        # Node info
         self.nodes = []
+
+        # Autoscaler info
+        self.redis_client = None
+        self.mock_autoscaler_data = mock_autoscaler_data
+        self.autoscaler_summary = None
+        self.lm_summary = None
         self.update()
+
+    def _create_redis_client(self, address, redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
+        import ray._private.services as services
+        if not address:
+            address = services.get_ray_address_to_use_or_die()
+        redis_client = services.create_redis_client(address, redis_password)
+        self.redis_client = redis_client
 
     def update(self):
         # Todo: fetch data
@@ -218,6 +237,28 @@ class DataManager:
         import json
         with open("/tmp/test.json", "rt") as f:
             self.nodes = [Node(json.load(f))]
+
+        self._load_autoscaler_state()
+
+    def _load_autoscaler_state(self):
+        as_dict = None
+        if self.mock_autoscaler_data:
+            with open(self.mock_autoscaler_data) as f:
+                as_dict = json.loads(f.read())
+        else:
+            if not self.redis_client:
+                self._create_redis_client()
+            status = self.redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
+            if status:
+                status = status.decode("utf-8")
+                as_dict = json.loads(status)
+        if as_dict:
+            self.lm_summary = LoadMetricsSummary(
+                **as_dict["load_metrics_report"])
+            if "autoscaler_report" in as_dict:
+                self.autoscaler_summary = AutoscalerSummary(
+                    **as_dict["autoscaler_report"])
+            # TODO: process the autoscaler data.
 
 
 class Node:
