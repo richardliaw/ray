@@ -310,25 +310,28 @@ class DataManager:
         self.memory_table = resp_data
 
     def _load_autoscaler_state(self):
+        def camel_to_snake(str):
+            parts = ["_" + i.lower() if i.isupper() else i for i in str]
+            return "".join(parts).lstrip("_")
+
         as_dict = None
         if self.mock_autoscaler:
             if isinstance(self.mock_autoscaler, str):
                 with open(self.mock_autoscaler) as f:
                     as_dict = json.loads(f.read())
         else:
-            if not self.redis_client:
-                self._create_redis_client(self.ray_address)
-            status = self.redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-            if status:
-                status = status.decode("utf-8")
-                as_dict = json.loads(status)
+            requests.get(f"{self.url}/api/cluster_status")
+            resp_json = resp.json()
+            as_dict = resp_json["data"]["clusterStatus"]
 
         if as_dict:
-            self.lm_summary = LoadMetricsSummary(
-                **as_dict["load_metrics_report"])
-            if "autoscaler_report" in as_dict:
-                self.autoscaler_summary = AutoscalerSummary(
-                    **as_dict["autoscaler_report"])
+            load_metrics = {
+                camel_to_snake(k): v for k, v in as_dict["loadMetricsReport"].items()}
+            self.lm_summary = LoadMetricsSummary(**load_metrics)
+            if "autoscalingStatus" in as_dict:
+                autoscaling_status = {
+                    camel_to_snake(k): v for k, v in as_dict["autoscalingStatus"].items()}
+                self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
             # TODO: process the autoscaler data.
 
 
