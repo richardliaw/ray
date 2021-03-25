@@ -77,7 +77,7 @@ def _fmt_timedelta(delta: datetime.timedelta):
 
 class Page(Enum):
     PAGE_NODE_INFO = auto()
-    PAGE_LOGICAL_VIEW = auto()
+    PAGE_MEMORY_VIEW = auto()
 
 
 class TUIPart:
@@ -91,17 +91,18 @@ class Display(TUIPart):
 
         self.event_queue = event_queue
         self.current_page = Page.PAGE_NODE_INFO
+        self.current_sorting = None
 
     def handle_queue(self):
         try:
-            action = self.event_queue.get_nowait()
+            action, val = self.event_queue.get_nowait()
         except Empty:
             return
 
-        if action == "page_node_info":
-            self.current_page = Page.PAGE_NODE_INFO
-        elif action == "page_logical_view":
-            self.current_page = Page.PAGE_LOGICAL_VIEW
+        if action == "page":
+            self.current_page = val
+        elif action == "sort":
+            self.current_sorting = val
         else:
             raise RuntimeError(f"Unknown action: {action}")
 
@@ -115,13 +116,14 @@ class Display(TUIPart):
         root["header"].update(Header(self.data_manager))
 
         if self.current_page == Page.PAGE_NODE_INFO:
-            root["body"].update(NodeInfoView(self.data_manager))
-        elif self.current_page == Page.PAGE_LOGICAL_VIEW:
-            root["body"].update(LogicalView(self.data_manager))
+            root["body"].update(
+                NodeInfoView(self.data_manager, self.current_sorting))
+        elif self.current_page == Page.PAGE_MEMORY_VIEW:
+            root["body"].update(MemoryView(self.data_manager))
         else:
             raise RuntimeError(f"Unknown page: {self.current_page}")
 
-        root["footer"].update(Footer(self.data_manager))
+        root["footer"].update(Footer(self.data_manager, self.current_page))
 
         return root
 
@@ -166,12 +168,17 @@ class AutoscalerStatus(TUIPart):
 
 
 class Footer(TUIPart):
+    def __init__(self, data_manager: "DataManager", current_page: Page):
+        super(Footer, self).__init__(data_manager)
+        self.current_page = current_page
+
     def __rich__(self) -> Layout:
         layout = Layout()
 
         commands = [
             f"[b]{key}[/b] {desc}"
-            for key, desc, _ in DisplayController.bindings
+            for key, desc, _, page in DisplayController.bindings
+            if page == 0 or page == self.current_page
         ]
 
         layout.update(Columns(commands, equal=True, expand=True))
@@ -180,9 +187,9 @@ class Footer(TUIPart):
 
 
 class NodeInfoView(TUIPart):
-    def __init__(self, data_manager: "DataManager"):
+    def __init__(self, data_manager: "DataManager", sort_by: str = "cpu"):
         super(NodeInfoView, self).__init__(data_manager)
-        self.sort_by = "cpu"
+        self.sort_by = sort_by
 
     def __rich__(self) -> Layout:
         layout = Layout()
@@ -204,8 +211,8 @@ class NodeTable(TUIPart):
     def __rich__(self) -> Table:
         table = Table(show_header=True, header_style="bold magenta")
 
-        table.add_column("Host", justify="center")
-        table.add_column("PID", justify="center")
+        table.add_column("Host/PID", justify="center")
+        table.add_column("Process", justify="center")
         table.add_column("Uptime", justify="center")
         table.add_column("CPU", justify="center")
         table.add_column("RAM", justify="center")
@@ -231,7 +238,7 @@ class NodeTable(TUIPart):
         return table
 
 
-class LogicalView(TUIPart):
+class MemoryView(TUIPart):
     def __rich__(self) -> Layout:
         layout = Layout()
 
@@ -258,7 +265,8 @@ class DataManager:
         self.ray_address = redis_address
         self.redis_client = None
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
-        self.mock_autoscaler = os.path.expanduser(mock_a6s) if mock_a6s else None
+        self.mock_autoscaler = os.path.expanduser(
+            mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
         self.lm_summary = None
         self.update()
@@ -424,7 +432,8 @@ class Node:
         return (
             extra_val,
             Text(self.hostname, justify="left"),
-            Text(f"{num_workers} workers / {num_cores} cores", justify="left"),
+            Text(
+                f"{num_workers} workers / {num_cores} cores", justify="right"),
             Text(f"{_fmt_timedelta(uptime)}", justify="right"),
             self.cpu_progress,
             self.memory_progress,
@@ -466,8 +475,11 @@ class Node:
 
             if extra == "cpu":
                 extra_val = worker["cpuPercent"]
+            elif extra == "memory":
+                extra_val = worker["memoryInfo"]["rss"] / \
+                                 worker["memoryInfo"]["vms"]
             else:
-                extra_val = None
+                extra_val = 0
 
             yield (
                 extra_val,
@@ -488,9 +500,11 @@ class Node:
 
 class DisplayController:
     bindings = [
-        ("N", "Node view", "cmd_view_node"),
-        ("L", "Logical view", "cmd_view_logical"),
-        ("q", "Quit", "cmd_stop"),
+        ("N", "Node view", "cmd_view_node", 0),
+        ("M", "Memory view", "cmd_view_memory", 0),
+        ("q", "Quit", "cmd_stop", 0),
+        ("c", "Sort by CPU", "cmd_sort_cpu", Page.PAGE_NODE_INFO),
+        ("m", "Sort by Memory", "cmd_sort_memory", Page.PAGE_NODE_INFO),
     ]
 
     def __init__(self, display: Display, stop_event: threading.Event,
@@ -514,7 +528,7 @@ class DisplayController:
         self.thread.join()
 
     def on_press(self, key):
-        for k, d, cmd in self.bindings:
+        for k, d, cmd, _ in self.bindings:
             if key == k:
                 fn = getattr(self, cmd, "cmd_invalid")
                 fn()
@@ -523,10 +537,16 @@ class DisplayController:
         self.stop_event.set()
 
     def cmd_view_node(self):
-        self.event_queue.put("page_node_info")
+        self.event_queue.put(("page", Page.PAGE_NODE_INFO))
 
-    def cmd_view_logical(self):
-        self.event_queue.put("page_logical_view")
+    def cmd_view_memory(self):
+        self.event_queue.put(("page", Page.PAGE_MEMORY_VIEW))
+
+    def cmd_sort_cpu(self):
+        self.event_queue.put(("sort", "cpu"))
+
+    def cmd_sort_memory(self):
+        self.event_queue.put(("sort", "memory"))
 
     def cmd_invalid(self):
         print("Invalid command called.")
