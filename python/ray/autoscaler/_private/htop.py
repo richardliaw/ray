@@ -232,7 +232,7 @@ class DataManager:
     def __init__(self, url: str, mock_autoscaler=True):
         self.url = url
 
-        self.mock = None
+        self.mock = os.environ.get("RAY_HTOP_MOCK")
         # self.mock = os.path.expanduser("~/coding/sandbox/out2.json")
 
         self.nodes = []
