@@ -14,16 +14,18 @@ import time
 import requests
 from rich import get_console
 from rich.columns import Columns
-from rich.console import RenderGroup
+from rich.console import Console, RenderGroup
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Task, TaskID, TextColumn
+from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from rich.theme import Theme
 
 try:
     # Windows
@@ -65,6 +67,24 @@ RAY_LOGO_LARGE = """
                                ▀██▓▓██▀¬
                                  ┌└└└
 """.strip("\n")  # noqa: E501, W293
+
+main_theme = Theme({
+    "headline": Style(color="cyan", bold=True),
+    "highlight": Style(color="blue", bgcolor="white"),
+    "stdout": Style(color="green"),
+    "stderr": Style(color="red"),
+    "neutral": Style(color="blue"),
+    "dead": Style(color="red", dim=True),
+    "deadhighlight": Style(color="red", bgcolor="white", dim=True),
+    "bar.complete": "cyan",
+    "progress.percentage": "cyan",
+    "table.border": "",
+})
+
+_styles = copy.deepcopy(main_theme.styles)
+_styles["headline"] = Style.parse("magenta")
+_styles["table.border"] = Style.parse("black")
+day_theme = Theme(_styles)
 
 
 def wait_key_press() -> str:
@@ -144,8 +164,12 @@ class TUIPart:
 
 
 class Display(TUIPart):
-    def __init__(self, data_manager: "DataManager", event_queue: Queue):
+    def __init__(self, data_manager: "DataManager", console: Console,
+                 event_queue: Queue):
         super(Display, self).__init__(data_manager)
+
+        self.console = console
+        self.theme = main_theme
 
         self.event_queue = event_queue
         self.current_page = Page.PAGE_NODE_INFO
@@ -167,6 +191,13 @@ class Display(TUIPart):
             self.current_sorting = val
         elif action == "nav":
             self.views[self.current_page].nav(val)
+        elif action == "theme":
+            if self.theme == main_theme:
+                self.theme = day_theme
+            else:
+                self.theme = main_theme
+            self.console.push_theme(self.theme)
+
         elif action == "attach":
             page_view = self.views[self.current_page]
             selected = None
@@ -236,7 +267,8 @@ class Meta(TUIPart):
                 Text(
                     f"\n{datetime.datetime.now():%Y-%m-%d %H:%M:%S}",
                     justify="right")),
-            title="")
+            title="",
+            border_style="table.border")
 
 
 class ClusterResources(TUIPart):
@@ -245,7 +277,8 @@ class ClusterResources(TUIPart):
             content = Text(
                 f"Cluster resources not available", justify="center")
         else:
-            table = Table(expand=True, show_header=False)
+            table = Table(
+                expand=True, show_header=False, border_style="table.border")
             table.add_column("")
             table.add_column("")
             table.add_column("")
@@ -258,8 +291,7 @@ class ClusterResources(TUIPart):
                     usage = _fmt_bytes(usage, to_float=False).split(" ")[0]
                     total = _fmt_bytes(total, to_float=False)
                 # TODO: implement usage
-                row.append(
-                    Text(resource, style="bold magenta", justify="right"))
+                row.append(Text(resource, style="headline", justify="right"))
                 row.append(Text(f"{usage} / {total}", justify="right"))
                 if len(row) == 4:
                     table.add_row(*row)
@@ -269,7 +301,8 @@ class ClusterResources(TUIPart):
 
             content = table
 
-        return Panel(content, title="Cluster resources")
+        return Panel(
+            content, title="Cluster resources", border_style="table.border")
 
 
 class AutoscalerStatus(TUIPart):
@@ -277,8 +310,12 @@ class AutoscalerStatus(TUIPart):
         if not self.data_manager.autoscaler_summary:
             content = Text(
                 f"Autoscaler summary not available", justify="center")
-            return Panel(content, title="Autoscaler status")
-        table = Table(header_style="bold magenta", expand=True)
+            return Panel(
+                content,
+                title="Autoscaler status",
+                border_style="table.border")
+        table = Table(
+            header_style="headline", border_style="table.border", expand=True)
         table.add_column("Node type", justify="center")
         table.add_column("Available", justify="center")
         table.add_column("Pending", justify="center")
@@ -323,7 +360,8 @@ class AutoscalerStatus(TUIPart):
                 Text(str(pending), justify="right"),
                 Text(str(failed), justify="right"),
             )
-        return Panel(table, title="Autoscaler status")
+        return Panel(
+            table, title="Autoscaler status", border_style="table.border")
 
 
 class Footer(TUIPart):
@@ -337,7 +375,11 @@ class Footer(TUIPart):
         tables = []
 
         def _new_table():
-            table = Table(show_header=False, box=None, show_edge=False)
+            table = Table(
+                show_header=False,
+                box=None,
+                show_edge=False,
+                border_style="table.border")
             table.add_column()
             table.add_column()
             return table
@@ -353,7 +395,11 @@ class Footer(TUIPart):
 
                 table.add_row(f"[b]{key}[/b]", f"{desc}")
 
-        main_table = Table(show_header=False, box=None, show_edge=False)
+        main_table = Table(
+            show_header=False,
+            box=None,
+            show_edge=False,
+            border_style="table.border")
         for i in range(len(tables)):
             main_table.add_column()
 
@@ -517,7 +563,7 @@ class NodeInfoView(TUIPart):
         if self.show == "table":
             title = "Cluster node overview"
             if self.frozen:
-                title += " [red](frozen during selection!)"
+                title += " [dead](frozen during selection!)"
                 if not self.cached:
                     self._cache_nodes()
                 nodes = self.cached
@@ -526,7 +572,9 @@ class NodeInfoView(TUIPart):
 
             table_container = NodeTableContainer(
                 nodes, self.sort_by, highlight=self.pos_y)
-            layout.update(Panel(table_container, title=title))
+            layout.update(
+                Panel(
+                    table_container, title=title, border_style="table.border"))
 
         elif self.show == "log" and self.print_logs:
             title = self.print_logs[0]
@@ -536,11 +584,11 @@ class NodeInfoView(TUIPart):
 
             for name, content_list in files:
                 if "stdout" in name:
-                    style = "green"
+                    style = "stdout"
                 elif "stderr" in name:
-                    style = "red"
+                    style = "stderr"
                 else:
-                    style = "lightblue"
+                    style = "neutral"
 
                 if self.height is not None and self.height > -1:
                     end = max(self.height, len(content_list) + self.log_y)
@@ -558,7 +606,10 @@ class NodeInfoView(TUIPart):
 
             layout.update(
                 Panel(
-                    Columns(contents, expand=True), expand=True, title=title))
+                    Columns(contents, expand=True),
+                    expand=True,
+                    title=title,
+                    border_style="table.border"))
 
         return layout
 
@@ -588,7 +639,10 @@ class NodeTableContainer:
         ]
 
     def __rich__(self) -> Table:
-        table = Table(show_header=True, header_style="bold magenta")
+        table = Table(
+            show_header=True,
+            header_style="headline",
+            border_style="table.border")
 
         try:
             size = os.get_terminal_size().columns
@@ -608,8 +662,7 @@ class NodeTableContainer:
 
             table.add_row(
                 *node_cols,
-                style="blue on white"
-                if table.row_count == self.highlight else "",
+                style="highlight" if table.row_count == self.highlight else "",
                 end_section=not node.expanded)
 
             if node.expanded:
@@ -618,12 +671,12 @@ class NodeTableContainer:
                         sorted(workers_rows, key=lambda item: -item[0])):
                     if row[1]:  # legacy
                         if table.row_count == self.highlight:
-                            style = "red on white"
+                            style = "deadhighlight"
                         else:
-                            style = "red"
+                            style = "dead"
                     else:
                         if table.row_count == self.highlight:
-                            style = "blue on white"
+                            style = "highlight"
                         else:
                             style = ""
 
@@ -676,12 +729,13 @@ class MemoryView(TUIPart):
 
         title = "Memory view"
         if self.pos_y >= 0:
-            title += " [blue](scrolling)"
+            title += " [neutral](scrolling)"
 
         layout.update(
             Panel(
                 MemoryTable(self.data_manager, offset=self.pos_y),
-                title=title))
+                title=title,
+                border_style="table.border"))
 
         return layout
 
@@ -738,6 +792,7 @@ class MemoryTable(TUIPart):
             show_header=False,
             expand=False,
             pad_edge=True,
+            border_style="table.border",
             padding=(0, 1))
 
         table.add_column()
@@ -769,7 +824,7 @@ class MemoryTable(TUIPart):
 
         if ignore < 0:
             cols = (
-                Text("Node:", style="bold magenta", justify="right"),
+                Text("Node:", style="headline", justify="right"),
                 Text(ip_addr, style="bold", justify="right"),
                 "",
                 "",
@@ -787,7 +842,7 @@ class MemoryTable(TUIPart):
         row = []
         for i in range(6):
             row += [
-                Text(colvals[i][0], style="bold magenta", justify="right"),
+                Text(colvals[i][0], style="headline", justify="right"),
                 colvals[i][1]
             ]
 
@@ -814,7 +869,8 @@ class MemoryTable(TUIPart):
         table = Table(
             show_header=True,
             title="Node objects",
-            header_style="bold magenta")
+            header_style="headline",
+            border_style="table.border")
 
         column_indices = [
             i for i in range(len(self.obj_columns))
@@ -995,9 +1051,10 @@ class StaticProgress:
 
 
 class Node:
-    percent_only = (
-        BarColumn(),
-        TextColumn("[progress.percentage]{task.percentage:>3.1f}%"))
+    percent_only = (BarColumn(),
+                    TextColumn(
+                        "[progress.percentage]{task.percentage:>3.1f}%",
+                        style="headline"))
 
     def _make_task(self):
         task = Task(
@@ -1228,6 +1285,7 @@ class DisplayController:
         ("N", "Node view", ("page", Page.PAGE_NODE_INFO), 0),
         ("M", "Memory view", ("page", Page.PAGE_MEMORY_VIEW), 0),
         ("R", "Ray credits", ("page", Page.PAGE_RAY_CREDITS), -1),
+        ("L", "Day/night mode", ("theme", "switch"), -1),
         ("q", "Quit", ("cmd", "cmd_stop"), 0),
         ("c", "Sort by CPU", ("sort", "cpu"), Page.PAGE_NODE_INFO),
         ("m", "Sort by Memory", ("sort", "memory"), Page.PAGE_NODE_INFO),
@@ -1313,7 +1371,9 @@ def live():
     event_queue = Queue()
 
     data_manager = DataManager("http://localhost:8265")  # , "localhost:10001")
-    display = Display(data_manager, event_queue)
+
+    console = Console(theme=main_theme)
+    display = Display(data_manager, console, event_queue)
 
     controller = DisplayController(display, should_stop, event_queue)
     controller.listen()
@@ -1323,8 +1383,9 @@ def live():
             refresh_per_second=10,
             screen=False,
             transient=False,
-            redirect_stderr=False,
-            redirect_stdout=False) as live:
+            console=console,
+            redirect_stderr=True,
+            redirect_stdout=True) as live:
         while not should_stop.is_set():
             time.sleep(.25)
             data_manager.update()
