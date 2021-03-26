@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 
-import ray
 import requests
 from ray.state import GlobalState
 from rich import get_console
@@ -23,15 +22,9 @@ from rich.table import Table
 from rich.text import Text
 
 import ray.ray_constants as ray_constants
-from ray.internal.internal_api import node_stats
 
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
-
-from ray.new_dashboard.memory_utils import construct_memory_table, \
-    get_group_by_type, get_sorting_type
-from ray.new_dashboard.modules.stats_collector.stats_collector_head import \
-    node_stats_to_dict
 
 try:
     # Windows
@@ -279,18 +272,18 @@ class MemoryTable(TUIPart):
         table.add_column()
         table.add_column()
 
-        for row in self.summary_row():
-            table.add_row(*row)
+        summary_table_stub = self.summary_table_stub()
+        object_table_stub = self.object_table_stub()
+
+        for key, group in self.data_manager.memory_data["group"].items():
+            self.add_summary_rows(summary_table_stub, group)
+            self.add_object_rows(object_table_stub, group)
+
+        table.add_row(summary_table_stub, object_table_stub)
 
         return table
 
-    def summary_row(self, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE"):
-        group_by, sort_by = get_group_by_type(group_by), get_sorting_type(
-            sort_by)
-        for key, group in self.data_manager.memory_data["group"].items():
-            yield self.summary_table(group), self.object_table(group)
-
-    def summary_table(self, group) -> Table:
+    def summary_table_stub(self) -> Table:
         table = Table(
             title="Node summary",
             show_header=False,
@@ -302,6 +295,9 @@ class MemoryTable(TUIPart):
         table.add_column()
         table.add_column()
 
+        return table
+
+    def add_summary_rows(self, table: Table, group: Dict):
         columns = [
             "Memory used",
             "Local refs",
@@ -311,6 +307,18 @@ class MemoryTable(TUIPart):
             "Actor handles",
         ]
 
+        ip_addr = group["entries"][0].get(
+            "nodeIpAddress", group["entries"][0].get(
+                "node_ip_address",
+                None)) if len(group["entries"]) > 0 else None
+
+        table.add_row(
+            Text("Node:", style="bold magenta", justify="right"),
+            Text(ip_addr, style="bold", justify="right"),
+            "",
+            "",
+            end_section=True)
+
         colvals = list(zip(columns, self.summary_data(group["summary"])))
 
         for i in range(3):
@@ -319,7 +327,7 @@ class MemoryTable(TUIPart):
                 colvals[i][1],
                 Text(colvals[i + 3][0], style="bold magenta", justify="right"),
                 colvals[i + 3][1],
-            )
+                end_section=i == 2)
 
         return table
 
@@ -334,7 +342,7 @@ class MemoryTable(TUIPart):
             Text(str(summary["total_actor_handles"]), justify="right"),
         )
 
-    def object_table(self, group) -> Table:
+    def object_table_stub(self) -> Table:
         table = Table(
             show_header=True,
             title="Node objects",
@@ -347,15 +355,15 @@ class MemoryTable(TUIPart):
         table.add_column("Reference Type", justify="center")
         table.add_column("Object Reference", justify="center")
 
-        for row in self.object_rows(group["entries"]):
-            table.add_row(*row)
-
         return table
 
-    def object_rows(self, entries):
-        for entry in entries:
+    def add_object_rows(self, table: Table, group: Dict):
+        # ip_addr = None
+        for i, entry in enumerate(group["entries"]):
             entry = camel_to_snake_dict(entry)
-            yield (
+
+            # ip_addr = entry["node_ip_address"]
+            table.add_row(
                 Text(entry["node_ip_address"], justify="right"),
                 Text(str(entry["pid"]), justify="right"),
                 Text(entry["type"], justify="right"),
@@ -363,11 +371,22 @@ class MemoryTable(TUIPart):
                 Text(_fmt_bytes(entry["object_size"]), justify="right"),
                 Text(entry["reference_type"], justify="right"),
                 Text(entry["object_ref"], justify="right"),
-            )
+                end_section=i == len(group["entries"]) - 1)
+        table.add_row(
+            "",  # Text(ip_addr, style="bold", justify="center"),
+            "",
+            "",
+            Text("Total object size", style="bold", justify="right"),
+            Text(
+                _fmt_bytes(group["summary"]["totalObjectSize"]),
+                justify="right"),
+            "",
+            "",
+            end_section=True)
 
 
 class DataManager:
-    def __init__(self, url: str, redis_address="127.0.0.1:6379"):
+    def __init__(self, url: str):
         self.url = url
 
         mock = os.environ.get("RAY_HTOP_MOCK")
@@ -383,17 +402,17 @@ class DataManager:
         self.nodes = []
 
         # Autoscaler info
-        self.ray_address = redis_address or \
-            ray.services.get_ray_address_to_use_or_die()
-        self.redis_client = None
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
         self.mock_autoscaler = os.path.expanduser(
             mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
         self.cluster_info = None
 
-        self._fetch_enabled = False
+        self._fetch_enabled = True
         self.memory_data = None
+
+        if self._fetch_enabled:
+            requests.get(f"{self.url}/memory/set_fetch?shouldFetch=true")
 
         self.update()
 
@@ -421,18 +440,6 @@ class DataManager:
         self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
 
     def _load_memory_info(self):
-        # Fetch core memory worker stats, store as a dictionary
-        # state = self._create_global_state(self.ray_address)
-        # core_worker_stats = []
-        # for raylet in state.node_table():
-        #     stats = node_stats_to_dict(
-        #         node_stats(raylet["NodeManagerAddress"],
-        #                    raylet["NodeManagerPort"]))
-        #     core_worker_stats.extend(stats["coreWorkersStats"])
-        #     assert type(stats) is dict and "coreWorkersStats" in stats
-        # print(core_worker_stats)
-        # self.memory_data = core_worker_stats
-
         if self.mock_memory_cache:
             resp_json = self.mock_memory_cache
         else:
@@ -441,6 +448,13 @@ class DataManager:
             resp_json = resp.json()
         resp_data = resp_json["data"]
         self.memory_data = resp_data.get("memoryTable")
+
+        # MOCK, todo: REMOVE
+        import copy
+        grp = self.memory_data["group"]
+        grp["mock_second"] = copy.deepcopy(grp[list(grp.keys())[0]])
+        grp["mock_second"]["entries"][0]["objectRef"] = "123"
+        grp["mock_second"]["entries"][1]["objectRef"] = "456"
 
     def _load_autoscaler_state(self):
         as_dict = None
