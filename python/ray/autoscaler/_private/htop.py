@@ -863,7 +863,7 @@ class DisplayController:
         ("ARROW_DOWN", "Go down", ("nav", "down"), -1),
         ("ARROW_UP", "Go up", ("nav", "up"), -1),
         ("\n", "Return", ("nav", "return"), -1),
-        ("x", "Escape", ("nav", "exit"), -1),
+        ("x", "Exit selection", ("nav", "exit"), 0),
     ]
 
     def __init__(self, display: Display, stop_event: threading.Event,
