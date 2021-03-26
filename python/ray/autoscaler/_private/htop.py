@@ -22,8 +22,6 @@ from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-import ray.ray_constants as ray_constants
-
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 
