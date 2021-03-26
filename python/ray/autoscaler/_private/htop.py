@@ -54,10 +54,15 @@ def wait_key_press() -> str:
 
 def _fmt_bytes(bytes: float) -> str:
     """Pretty format bytes"""
+
     pwr = 2**10
     suffix = ["B", "KB", "MB", "GB", "TB"]
     keep = bytes
     times = 0
+
+    if bytes < 1.:
+        return f"{keep:.2f} {suffix[0]}"
+
     while bytes >= 1. and times < len(suffix):
         keep = bytes
         bytes /= pwr
@@ -287,7 +292,7 @@ class NodeInfoView(TUIPart):
             self.show = "log"
 
         sel = -1
-        for node in self.data_manager.nodes:
+        for node in self.cached:
             sel += 1
             if sel == self.pos_y:
                 _node_log(node.ip)
@@ -300,7 +305,7 @@ class NodeInfoView(TUIPart):
                     return
 
     def _cache_nodes(self):
-        self.cached = copy.copy(self.data_manager.nodes)
+        self.cached = copy.copy(list(self.data_manager.nodes.values()))
         for node in self.cached:
             node.workers = copy.deepcopy(node.workers)
 
@@ -337,7 +342,7 @@ class NodeInfoView(TUIPart):
                     self._cache_nodes()
                 nodes = self.cached
             else:
-                nodes = self.data_manager.nodes
+                nodes = list(self.data_manager.nodes.values())
 
             table_container = NodeTableContainer(
                 nodes, self.sort_by, highlight=self.pos_y)
@@ -407,10 +412,20 @@ class NodeTableContainer:
                 workers_rows = list(node.worker_rows(extra=self.sort_by))
                 for i, row in enumerate(
                         sorted(workers_rows, key=lambda item: -item[0])):
+                    if row[1]:  # legacy
+                        if table.row_count == self.highlight:
+                            style = "red on white"
+                        else:
+                            style = "red"
+                    else:
+                        if table.row_count == self.highlight:
+                            style = "blue on white"
+                        else:
+                            style = ""
+
                     table.add_row(
-                        *row[1:],
-                        style="blue on white"
-                        if table.row_count == self.highlight else "",
+                        *row[2:],
+                        style=style,
                         end_section=i == len(workers_rows) - 1)
 
         return table
@@ -566,7 +581,7 @@ class DataManager:
                 self.mock_cache = json.load(f)
                 self.mock_cache["data"]["clients"] *= 2
 
-        self.nodes = []
+        self.nodes = {}
 
         # Autoscaler info
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
@@ -610,6 +625,9 @@ class DataManager:
         self._load_memory_info()
 
     def _load_nodes(self):
+        def _node_id(node_dict):
+            return hash((node_dict["raylet"]["nodeId"], ))
+
         if self.mock_cache:
             resp_json = self.mock_cache
         else:
@@ -618,7 +636,11 @@ class DataManager:
 
         resp_data = resp_json["data"]
 
-        self.nodes = [Node(node_dict) for node_dict in resp_data["clients"]]
+        for node_dict in resp_data["clients"]:
+            nid = _node_id(node_dict)
+            if nid not in self.nodes:
+                self.nodes[nid] = Node()
+            self.nodes[nid].update(node_dict)
 
     def _load_memory_info(self):
         if self.mock_memory_cache:
@@ -693,6 +715,11 @@ class Node:
     def __init__(self, data: Optional[Dict] = None):
         self.expanded = True
 
+        # How long to keep workers after death
+        self.keep_workers_s = 30
+        self.workers = None
+        self.legacy_workers = {}
+
         self.cpu_task = self._make_task()
         self.cpu_progress = StaticProgress(
             *self.percent_only, task=self.cpu_task)
@@ -717,7 +744,51 @@ class Node:
             self.update(data)
 
     def update(self, data: Dict):
-        self.workers = data["workers"]
+        def _worker_id(worker):
+            return hash((
+                worker["pid"],
+                worker["jobId"],
+                # worker["coreWorkerStats"][0]["workerId"],
+            ))
+
+        if not self.workers:
+            self.workers = data["workers"]
+        else:
+            # Update workers, marking some as stale
+            cached_workers = {
+                _worker_id(worker): worker
+                for worker in self.workers
+            }
+            new_workers = {
+                _worker_id(worker): worker
+                for worker in data["workers"]
+            }
+
+            updated_workers = {}
+            # Loop through cached workers
+            for wid, worker in cached_workers.items():
+                wid = _worker_id(worker)
+                if wid not in new_workers:
+                    # Worker is dead
+                    if wid not in self.legacy_workers:
+                        self.legacy_workers[wid] = time.time()
+
+                    if time.time(
+                    ) > self.legacy_workers[wid] + self.keep_workers_s:
+                        # Worker should be removed
+                        del self.legacy_workers[wid]
+                        # Just do not add to new workers
+                        continue
+
+                    worker["legacy"] = True
+                    updated_workers[wid] = worker
+
+            for wid, worker in new_workers.items():
+                if wid not in updated_workers:
+                    worker["legacy"] = False
+                    updated_workers[wid] = worker
+
+            self.workers = list(updated_workers.values())
 
         self.bootTime = data["bootTime"]
         self.cpu = data["cpu"]
@@ -817,7 +888,8 @@ class Node:
     def worker_rows(self, extra: Optional[str] = None) -> Iterable[Tuple]:
         """Create worker row for table.
 
-        First element is ``extra`` element, used for sorting."""
+        First element is ``extra`` element, used for sorting.
+        Second element is ``legacy``, indicating the actor is dead. """
         for worker in self.workers:
             uptime = datetime.timedelta(seconds=self.now -
                                         worker["createTime"])
@@ -838,6 +910,7 @@ class Node:
 
             yield (
                 extra_val,
+                worker.get("legacy", False),
                 Text(str(worker["pid"]), justify="right"),
                 Text(worker["cmdline"][0], justify="right", no_wrap=True),
                 Text(f"{_fmt_timedelta(uptime)}", justify="right"),
@@ -848,8 +921,8 @@ class Node:
                 "",
                 "",
                 "",
-                "",
-                "",
+                Text(str(worker["logCount"]), justify="right"),
+                Text(str(worker["errorCount"]), justify="right"),
             )
 
 
