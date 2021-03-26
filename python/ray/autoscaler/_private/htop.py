@@ -12,7 +12,6 @@ import time
 import requests
 from ray.state import GlobalState
 from rich import get_console
-from rich.columns import Columns
 from rich.console import RenderGroup
 from rich.layout import Layout
 from rich.live import Live
@@ -189,13 +188,32 @@ class Footer(TUIPart):
     def __rich__(self) -> Layout:
         layout = Layout()
 
-        commands = [
-            f"[b]{key}[/b] {desc}"
-            for key, desc, _, page in DisplayController.bindings
-            if page == 0 or page == self.current_page
-        ]
+        tables = []
 
-        layout.update(Columns(commands, equal=True, expand=True))
+        def _new_table():
+            table = Table(show_header=False, box=None, show_edge=False)
+            table.add_column()
+            table.add_column()
+            return table
+
+        table = _new_table()
+        tables.append(table)
+
+        for key, desc, _, page in DisplayController.bindings:
+            if page == 0 or page == self.current_page:
+                if table.row_count == 3:
+                    table = _new_table()
+                    tables.append(table)
+
+                table.add_row(f"[b]{key}[/b]", f"{desc}")
+
+        main_table = Table(show_header=False, box=None, show_edge=False)
+        for i in range(len(tables)):
+            main_table.add_column()
+
+        main_table.add_row(*tables)
+
+        layout.update(main_table)
 
         return layout
 
