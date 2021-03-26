@@ -1,7 +1,8 @@
+import copy
 import json
 import os  # noqa: F401
 from queue import Empty, Queue
-from typing import Dict, Iterable, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 from enum import Enum, auto
 
 import datetime
@@ -12,6 +13,7 @@ import time
 import requests
 from ray.state import GlobalState
 from rich import get_console
+from rich.columns import Columns
 from rich.console import RenderGroup
 from rich.layout import Layout
 from rich.live import Live
@@ -106,6 +108,8 @@ class Display(TUIPart):
         self.current_page = Page.PAGE_NODE_INFO
         self.current_sorting = None
 
+        self.views = {}
+
     def handle_queue(self):
         try:
             action, val = self.event_queue.get_nowait()
@@ -116,6 +120,8 @@ class Display(TUIPart):
             self.current_page = val
         elif action == "sort":
             self.current_sorting = val
+        elif action == "nav":
+            self.views[self.current_page].nav(val)
         else:
             raise RuntimeError(f"Unknown action: {action}")
 
@@ -128,13 +134,16 @@ class Display(TUIPart):
 
         root["header"].update(Header(self.data_manager))
 
-        if self.current_page == Page.PAGE_NODE_INFO:
-            root["body"].update(
-                NodeInfoView(self.data_manager, self.current_sorting))
-        elif self.current_page == Page.PAGE_MEMORY_VIEW:
-            root["body"].update(MemoryView(self.data_manager))
-        else:
-            raise RuntimeError(f"Unknown page: {self.current_page}")
+        if self.current_page not in self.views:
+            if self.current_page == Page.PAGE_NODE_INFO:
+                self.views[self.current_page] = NodeInfoView(
+                    self.data_manager, self.current_sorting)
+            elif self.current_page == Page.PAGE_MEMORY_VIEW:
+                self.views[self.current_page] = MemoryView(self.data_manager)
+            else:
+                raise RuntimeError(f"Unknown page: {self.current_page}")
+
+        root["body"].update(self.views[self.current_page])
 
         root["footer"].update(Footer(self.data_manager, self.current_page))
 
@@ -223,22 +232,153 @@ class NodeInfoView(TUIPart):
         super(NodeInfoView, self).__init__(data_manager)
         self.sort_by = sort_by
 
+        self.show = "table"  # table|log
+
+        # table view
+        self.pos_y = -1
+        self.frozen = False
+        self.cached = None
+
+        # log view
+        self.print_logs = None
+
+    def exit(self):
+        if self.show == "log":
+            self.show = "table"
+            self.print_logs = None
+        else:
+            self.pos_y = -1
+            self.frozen = False
+            self.cached = None
+
+    def choose(self):
+        if self.pos_y == -1:
+            return
+
+        def _node_log(ip):
+            logs, errs = self.data_manager.get_logs(ip)
+
+            keys = sorted(k for k in logs.keys() if not k.isnumeric())
+
+            print_keys = []
+            print_vals = []
+            for k in keys:
+                print_keys.append(f"{k} stdout")
+                print_vals.append(logs.get(k, []))
+
+                print_keys.append(f"{k} stderr")
+                print_vals.append(errs.get(k, []))
+
+            self.print_logs = (f"Node logs for IP {ip}", ) + tuple(
+                zip(print_keys, print_vals))
+
+            self.show = "log"
+
+        def _worker_log(ip, worker):
+            pid = worker["pid"]
+
+            logs, errs = self.data_manager.get_logs(ip, pid)
+
+            self.print_logs = (
+                f"Worker logs for IP {ip}, PID {pid}",
+                ("stdout", logs.get(str(pid))),
+                ("stderr", errs.get(str(pid))),
+            )
+            self.show = "log"
+
+        sel = -1
+        for node in self.data_manager.nodes:
+            sel += 1
+            if sel == self.pos_y:
+                _node_log(node.ip)
+                return
+
+            for worker in node.workers:
+                sel += 1
+                if sel == self.pos_y:
+                    _worker_log(node.ip, worker)
+                    return
+
+    def _cache_nodes(self):
+        self.cached = copy.copy(self.data_manager.nodes)
+        for node in self.cached:
+            node.workers = copy.deepcopy(node.workers)
+
+    def nav(self, direction: str):
+        if direction == "exit":
+            self.exit()
+            return
+
+        if direction == "return":
+            self.choose()
+            return
+
+        self.frozen = True
+        if not self.cached:
+            self._cache_nodes()
+
+        num_rows = sum(len(node.workers) + 1 for node in self.cached)
+
+        y = 0
+        if direction == "up":
+            y = -1
+        elif direction == "down":
+            y = 1
+        self.pos_y = max(0, min(num_rows - 1, self.pos_y + y))
+
     def __rich__(self) -> Layout:
         layout = Layout()
 
-        table = NodeTable(self.data_manager, self.sort_by)
-        layout.update(Panel(table, title="Cluster node overview"))
+        if self.show == "table":
+            title = "Cluster node overview"
+            if self.frozen:
+                title += " [red](frozen during selection!)"
+                if not self.cached:
+                    self._cache_nodes()
+                nodes = self.cached
+            else:
+                nodes = self.data_manager.nodes
+
+            table_container = NodeTableContainer(
+                nodes, self.sort_by, highlight=self.pos_y)
+            layout.update(Panel(table_container, title=title))
+
+        elif self.show == "log" and self.print_logs:
+            title = self.print_logs[0]
+            files = self.print_logs[1:]
+
+            contents = []
+
+            for name, content_list in files:
+                if "stdout" in name:
+                    style = "green"
+                elif "stderr" in name:
+                    style = "red"
+                else:
+                    style = "lightblue"
+
+                contents.append(
+                    Panel(
+                        Text("\n".join(content_list), justify="left"),
+                        style=style,
+                        expand=True,
+                        title=name))
+
+            layout.update(
+                Panel(
+                    Columns(contents, expand=True), expand=True, title=title))
 
         return layout
 
 
-class NodeTable(TUIPart):
+class NodeTableContainer:
     def __init__(self,
-                 data_manager: "DataManager",
-                 sort_by: Optional[str] = None):
-        super(NodeTable, self).__init__(data_manager)
-
+                 nodes: List,
+                 sort_by: Optional[str] = None,
+                 highlight: int = -1):
+        self.nodes = nodes
         self.sort_by = sort_by
+        self.highlight = highlight
 
     def __rich__(self) -> Table:
         table = Table(show_header=True, header_style="bold magenta")
@@ -256,21 +396,30 @@ class NodeTable(TUIPart):
         table.add_column("Logs", justify="center")
         table.add_column("Errors", justify="center")
 
-        for node in self.data_manager.nodes:
+        for node in self.nodes:
             table.add_row(
-                *node.node_row(extra=None)[1:], end_section=not node.expanded)
+                *node.node_row(extra=None)[1:],
+                style="blue on white"
+                if table.row_count == self.highlight else "",
+                end_section=not node.expanded)
 
             if node.expanded:
                 workers_rows = list(node.worker_rows(extra=self.sort_by))
                 for i, row in enumerate(
                         sorted(workers_rows, key=lambda item: -item[0])):
                     table.add_row(
-                        *row[1:], end_section=i == len(workers_rows) - 1)
+                        *row[1:],
+                        style="blue on white"
+                        if table.row_count == self.highlight else "",
+                        end_section=i == len(workers_rows) - 1)
 
         return table
 
 
 class MemoryView(TUIPart):
+    def nav(self, direction: str):
+        pass
+
     def __rich__(self) -> Layout:
         layout = Layout()
 
@@ -441,6 +590,20 @@ class DataManager:
         state._initialize_global_state(address, redis_password)
         return state
 
+    def get_logs(self, ip: str, pid: int = -1):
+        if pid < 0:
+            logs = requests.get(
+                f"{self.url}/node_logs?ip={ip}").json()["data"]["logs"] or {}
+            errs = requests.get(f"{self.url}/node_errors?ip={ip}").json(
+            )["data"]["errors"] or {}
+        else:
+            logs = requests.get(f"{self.url}/node_logs?ip={ip}&pid={pid}"
+                                ).json()["data"]["logs"] or {}
+            errs = requests.get(f"{self.url}/node_errors?ip={ip}&pid={pid}"
+                                ).json()["data"]["errors"] or {}
+
+        return logs, errs
+
     def update(self):
         self._load_nodes()
         self._load_autoscaler_state()
@@ -468,11 +631,11 @@ class DataManager:
         self.memory_data = resp_data.get("memoryTable")
 
         # MOCK, todo: REMOVE
-        import copy
-        grp = self.memory_data["group"]
-        grp["mock_second"] = copy.deepcopy(grp[list(grp.keys())[0]])
-        grp["mock_second"]["entries"][0]["objectRef"] = "123"
-        grp["mock_second"]["entries"][1]["objectRef"] = "456"
+        # import copy
+        # grp = self.memory_data["group"]
+        # grp["mock_second"] = copy.deepcopy(grp[list(grp.keys())[0]])
+        # grp["mock_second"]["entries"][0]["objectRef"] = "123"
+        # grp["mock_second"]["entries"][1]["objectRef"] = "456"
 
     def _load_autoscaler_state(self):
         as_dict = None
@@ -561,6 +724,7 @@ class Node:
         self.cpus = data["cpus"]
         self.disk = data["disk"]
         self.hostname = data["hostname"]
+        self.ip = data["ip"]
         self.mem = data["mem"]  # total, available, pct, used
         self.network = data["network"]  # sent, recv
         self.now = data["now"]
@@ -698,6 +862,8 @@ class DisplayController:
         ("m", "Sort by Memory", ("sort", "memory"), Page.PAGE_NODE_INFO),
         ("ARROW_DOWN", "Go down", ("nav", "down"), -1),
         ("ARROW_UP", "Go up", ("nav", "up"), -1),
+        ("\n", "Return", ("nav", "return"), -1),
+        ("x", "Escape", ("nav", "exit"), -1),
     ]
 
     def __init__(self, display: Display, stop_event: threading.Event,
@@ -710,9 +876,10 @@ class DisplayController:
     def listen(self):
         def _parse_escape():
             first = wait_key_press()
-            second = wait_key_press()
 
             if ord(first) == 91:
+                second = wait_key_press()
+
                 # Arrow keys
                 if ord(second) == 65:
                     return "ARROW_UP"
@@ -722,6 +889,7 @@ class DisplayController:
                     return "ARROW_RIGHT"
                 elif ord(second) == 68:
                     return "ARROW_LEFT"
+
             return ""
 
         def _run():
@@ -766,7 +934,7 @@ def live():
 
     with Live(
             display.display(),
-            refresh_per_second=4,
+            refresh_per_second=10,
             screen=False,
             transient=False,
             redirect_stderr=False,
