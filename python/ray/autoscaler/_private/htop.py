@@ -22,11 +22,6 @@ from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
 
-from ray.state import GlobalState
-from ray.util.client import ray as ray_client
-
-import ray.ray_constants as ray_constants
-
 from ray.autoscaler._private.load_metrics import LoadMetricsSummary
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 
@@ -55,7 +50,7 @@ def wait_key_press() -> str:
     return ch
 
 
-def _fmt_bytes(bytes: float) -> str:
+def _fmt_bytes(bytes: float, to_float: bool = True) -> str:
     """Pretty format bytes"""
 
     pwr = 2**10
@@ -71,7 +66,13 @@ def _fmt_bytes(bytes: float) -> str:
         bytes /= pwr
         times += 1
 
-    return f"{keep:.2f} {suffix[times-1]}"
+    if to_float:
+        output = f"{keep:.2f}"
+    else:
+        output = f"{int(keep)}"
+
+    output += f" {suffix[times-1]}"
+    return output
 
 
 def _fmt_timedelta(delta: datetime.timedelta):
@@ -87,6 +88,8 @@ def _fmt_timedelta(delta: datetime.timedelta):
 
 
 def camel_to_snake(string):
+    if all(i == i.upper() for i in string):
+        return string
     parts = ["_" + i.lower() if i.isupper() else i for i in string]
     return "".join(parts).lstrip("_")
 
@@ -197,10 +200,14 @@ class ClusterResources(TUIPart):
 
             row = []
             for resource in sorted(self.data_manager.cluster_resources):
-                amount = self.data_manager.cluster_resources[resource]
+                usage, total = self.data_manager.cluster_resources[resource]
+                if "memory" in resource:
+                    usage = _fmt_bytes(usage, to_float=False).split(" ")[0]
+                    total = _fmt_bytes(total, to_float=False)
+                # TODO: implement usage
                 row.append(
                     Text(resource, style="bold magenta", justify="right"))
-                row.append(Text(str(amount), justify="right"))
+                row.append(Text(f"{usage} / {total}", justify="right"))
                 if len(row) == 4:
                     table.add_row(*row)
                     row = []
@@ -214,6 +221,10 @@ class ClusterResources(TUIPart):
 
 class AutoscalerStatus(TUIPart):
     def __rich__(self) -> Panel:
+        if not self.data_manager.autoscaler_summary:
+            content = Text(
+                f"Autoscaler summary not available", justify="center")
+            return Panel(content, title="Autoscaler status")
         table = Table(header_style="bold magenta", expand=True)
         table.add_column("Node type", justify="center")
         table.add_column("Available", justify="center")
@@ -259,7 +270,6 @@ class AutoscalerStatus(TUIPart):
                 Text(str(pending), justify="right"),
                 Text(str(failed), justify="right"),
             )
-
         return Panel(table, title="Autoscaler status")
 
 
@@ -725,27 +735,12 @@ class DataManager:
 
         self.nodes = {}
 
-        self.cluster_resources_last = 0
-        self.cluster_resources_refresh_time = 10
-        self.cluster_resources = None
-
-        # Todo: remove mock
-        if not client_hostport:
-            self.cluster_resources = {
-                "CPU": 16.0,
-                "GPU": 2.0,
-                "object_store_memory": 2241473740.0,
-                "node:192.168.0.29": 1.0,
-                "memory": 4482947483.0,
-                "node:192.168.0.28": 1.0
-            }
-
         # Autoscaler info
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
         self.mock_autoscaler = os.path.expanduser(
             mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
-        self.cluster_info = None
+        self.cluster_resources = None
 
         self._fetch_enabled = True
         self.memory_data = None
@@ -753,18 +748,7 @@ class DataManager:
         if self._fetch_enabled:
             requests.get(f"{self.url}/memory/set_fetch?shouldFetch=true")
 
-        self.ray_client = None
-        if client_hostport:
-            ray_client.connect(client_hostport)
-
         self.update()
-
-    def _create_global_state(
-            self, address,
-            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
-        state = GlobalState()
-        state._initialize_global_state(address, redis_password)
-        return state
 
     def get_logs(self, ip: str, pid: int = -1):
         if pid < 0:
@@ -782,7 +766,6 @@ class DataManager:
 
     def update(self):
         self._load_nodes()
-        self._load_cluster_resources()
         self._load_autoscaler_state()
         self._load_memory_info()
 
@@ -803,14 +786,6 @@ class DataManager:
             if nid not in self.nodes:
                 self.nodes[nid] = Node()
             self.nodes[nid].update(node_dict)
-
-    def _load_cluster_resources(self):
-        if not ray_client.is_connected():
-            return
-        if time.time(
-        ) > self.cluster_resources_last + self.cluster_resources_refresh_time:
-            self.cluster_resources = ray_client.cluster_resources()
-            self.cluster_resources_last = time.time()
 
     def _load_memory_info(self):
         if self.mock_memory_cache:
@@ -835,7 +810,8 @@ class DataManager:
 
         if as_dict:
             load_metrics = camel_to_snake_dict(as_dict["loadMetricsReport"])
-            self.cluster_info = LoadMetricsSummary(**load_metrics)
+            lm_summary = LoadMetricsSummary(**load_metrics)
+            self.cluster_resources = camel_to_snake_dict(lm_summary.usage)
 
             if "autoscalerReport" in as_dict:
                 autoscaling_status = camel_to_snake_dict(
