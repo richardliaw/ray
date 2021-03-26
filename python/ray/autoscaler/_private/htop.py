@@ -35,6 +35,37 @@ except ImportError:
     import termios
     import tty
 
+RAY_LOGO = """
+           /‾‾\\
+           \__/ \\\\
+    /‾‾\\___/‾‾\\___/‾‾\\
+    \__/‾‾‾\__/‾‾‾\__/
+           /‾‾\\ //
+           \__/
+""".strip("\n")
+
+RAY_LOGO_LARGE = """
+ 
+                               ,▄▓██▓▄▄
+                              ▄██▀└└▀██▌
+                              ██▌    ▐██
+                              ▀██▄▄▄▄██▓
+                               ¬▀▀▓▓▀▀██▓▄                    ▄▄▄▄▄▄▄▄▄µ              ╓▄▄       ╥▄⌐           ▄▄
+                                       ╙▀██▄                  ██▀▀▀▀▀▀▀▀██▄          ╒███▌       ▀█▄        ▄██
+                  ,▄▄▄▄▄        ▄▄▄▄▄▄   '▀██▄▄▄▄▄▄µ          ██         ╙██        ╓█▌ ▀█▌       ▀█▓      ▄█▀
+                ┌▓██▀▀▀██▌    ╓██▀▀▀▀██▄    ███▀▀▀███µ        ██          ██       ╓█▓   ▀█▌       └██▄   ██▀
+                ██▌    '████████▌    ▐████████µ    ▐██        ██         ▄█▌      ╓██     ▀█▌        ██▄▄██┌
+                ▀██▄  ,▓██└└└└▓█▓▄  ╓▓██└└└└██▓,  ▄██▌        ██▓▓▓▓▓▓▓██▀▀      ╓██,      ██▄        ▀███
+                 ╙▀█████▀      ▀▀████▓▀   ,▓███████▀╘         ██└└└└└τ▀█▌       ╓██▀▀▀▀▀▀▀▀▀██▄        ██
+                                        ▄▓██▀                 ██       └██▄    ╓██           ▓█▄       ██
+                                 ,▄▄, ▄▓██▀                   ██         ▀█▌  ╒██             ▀█L      ██
+                               ▓████████
+                              ██▌    ▀██
+                              ██▌    ▄██                      Terminal dashboard by Richard & Kai
+                               ▀██▓▓██▀¬
+                                 ┌└└└
+""".strip("\n")  # noqa: E501, W293
+
 
 def wait_key_press() -> str:
     if msvcrt:
@@ -104,6 +135,7 @@ def camel_to_snake_dict(dict_):
 class Page(Enum):
     PAGE_NODE_INFO = auto()
     PAGE_MEMORY_VIEW = auto()
+    PAGE_RAY_CREDITS = auto()
 
 
 class TUIPart:
@@ -162,6 +194,8 @@ class Display(TUIPart):
                     self.data_manager, self.current_sorting)
             elif self.current_page == Page.PAGE_MEMORY_VIEW:
                 self.views[self.current_page] = MemoryView(self.data_manager)
+            elif self.current_page == Page.PAGE_RAY_CREDITS:
+                self.views[self.current_page] = RayCredits(self.data_manager)
             else:
                 raise RuntimeError(f"Unknown page: {self.current_page}")
 
@@ -197,9 +231,11 @@ class Header(TUIPart):
 class Meta(TUIPart):
     def __rich__(self) -> Panel:
         return Panel(
-            Text(
-                f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S}",
-                justify="right"),
+            RenderGroup(
+                Text(RAY_LOGO, style="#00ffff", justify="left"),
+                Text(
+                    f"\n{datetime.datetime.now():%Y-%m-%d %H:%M:%S}",
+                    justify="right")),
             title="")
 
 
@@ -326,6 +362,23 @@ class Footer(TUIPart):
         layout.update(main_table)
 
         return layout
+
+
+class RayCredits(TUIPart):
+    def set_height(self, height: int = -1):
+        pass
+
+    def nav(self, direction: str):
+        pass
+
+    def exit(self):
+        pass
+
+    def __rich__(self):
+        return Panel(
+            Text(RAY_LOGO_LARGE, justify="left", style="#00ffff"),
+            title="Ray TUI",
+            style="#00ffff")
 
 
 class NodeInfoView(TUIPart):
@@ -1174,6 +1227,7 @@ class DisplayController:
     bindings = [
         ("N", "Node view", ("page", Page.PAGE_NODE_INFO), 0),
         ("M", "Memory view", ("page", Page.PAGE_MEMORY_VIEW), 0),
+        ("R", "Ray credits", ("page", Page.PAGE_RAY_CREDITS), -1),
         ("q", "Quit", ("cmd", "cmd_stop"), 0),
         ("c", "Sort by CPU", ("sort", "cpu"), Page.PAGE_NODE_INFO),
         ("m", "Sort by Memory", ("sort", "memory"), Page.PAGE_NODE_INFO),
