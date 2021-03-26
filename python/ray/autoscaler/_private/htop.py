@@ -1,6 +1,7 @@
 import copy
 import json
 import os  # noqa: F401
+from collections import Counter
 from queue import Empty, Queue
 from typing import Dict, Iterable, List, Optional, Tuple
 from enum import Enum, auto
@@ -189,9 +190,53 @@ class ClusterResources(TUIPart):
 
 class AutoscalerStatus(TUIPart):
     def __rich__(self) -> Panel:
-        return Panel(
-            Text(f"Autoscaler status", justify="center"),
-            title="Autoscaler status")
+        table = Table(header_style="bold magenta", expand=True)
+        table.add_column("Node type", justify="center")
+        table.add_column("Available", justify="center")
+        table.add_column("Pending", justify="center")
+        table.add_column("Failed", justify="center")
+
+        seen_types = set()
+
+        pending_counter = Counter()
+        for (ip, node_type,
+             status) in self.data_manager.autoscaler_summary.pending_nodes:
+            pending_counter[node_type] += 1
+            seen_types.add(node_type)
+
+        failed_counter = Counter()
+        for (ip, node_type,
+             status) in self.data_manager.autoscaler_summary.failed_nodes:
+            failed_counter[node_type] += 1
+            seen_types.add(node_type)
+
+        for (node_type, active
+             ) in self.data_manager.autoscaler_summary.active_nodes.items():
+            pending = pending_counter.get(node_type, "")
+            failed = failed_counter.get(node_type, "")
+            if node_type in seen_types:
+                seen_types.remove(node_type)
+
+            table.add_row(
+                Text(node_type, justify="right"),
+                Text(str(active), justify="right"),
+                Text(str(pending), justify="right"),
+                Text(str(failed), justify="right"),
+            )
+
+        for inactive_type in seen_types:
+            active = ""
+            pending = pending_counter.get(inactive_type, "")
+            failed = failed_counter.get(inactive_type, "")
+
+            table.add_row(
+                Text(inactive_type, justify="right"),
+                Text(str(active), justify="right"),
+                Text(str(pending), justify="right"),
+                Text(str(failed), justify="right"),
+            )
+
+        return Panel(table, title="Autoscaler status")
 
 
 class Footer(TUIPart):
@@ -652,19 +697,12 @@ class DataManager:
         resp_data = resp_json["data"]
         self.memory_data = resp_data.get("memoryTable")
 
-        # MOCK, todo: REMOVE
-        # import copy
-        # grp = self.memory_data["group"]
-        # grp["mock_second"] = copy.deepcopy(grp[list(grp.keys())[0]])
-        # grp["mock_second"]["entries"][0]["objectRef"] = "123"
-        # grp["mock_second"]["entries"][1]["objectRef"] = "456"
-
     def _load_autoscaler_state(self):
         as_dict = None
         if self.mock_autoscaler:
             if isinstance(self.mock_autoscaler, str):
                 with open(self.mock_autoscaler) as f:
-                    as_dict = json.loads(f.read())
+                    as_dict = json.loads(f.read())["data"]["clusterStatus"]
         else:
             resp = requests.get(f"{self.url}/api/cluster_status")
             resp_json = resp.json()
@@ -673,11 +711,12 @@ class DataManager:
         if as_dict:
             load_metrics = camel_to_snake_dict(as_dict["loadMetricsReport"])
             self.cluster_info = LoadMetricsSummary(**load_metrics)
-            if "autoscalingStatus" in as_dict:
+
+            if "autoscalerReport" in as_dict:
                 autoscaling_status = camel_to_snake_dict(
-                    as_dict["autoscalingStatus"])
-                self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
-            # TODO: process the autoscaler data.
+                    as_dict["autoscalerReport"])
+                self.autoscaler_summary = AutoscalerSummary(
+                    **autoscaling_status)
 
 
 class StaticProgress:
