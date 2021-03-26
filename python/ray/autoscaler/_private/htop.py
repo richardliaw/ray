@@ -247,7 +247,7 @@ class MemoryView(TUIPart):
 
 
 class DataManager:
-    def __init__(self, url: str, redis_address="127.0.0.1:6379"):
+    def __init__(self, url: str):
         self.url = url
 
         mock = os.environ.get("RAY_HTOP_MOCK")
@@ -263,7 +263,6 @@ class DataManager:
         self.nodes = []
 
         # Autoscaler info
-        self.ray_address = redis_address
         self.redis_client = None
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
         self.mock_autoscaler = os.path.expanduser(
