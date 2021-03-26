@@ -791,7 +791,8 @@ def attach_cluster(config_file: str,
                    override_cluster_name: Optional[str],
                    no_config_cache: bool = False,
                    new: bool = False,
-                   port_forward: Optional[Port_forward] = None) -> None:
+                   port_forward: Optional[Port_forward] = None,
+                   node_ip: Optional[str] = None) -> None:
     """Attaches to a screen for the specified cluster.
 
     Arguments:
@@ -828,24 +829,42 @@ def attach_cluster(config_file: str,
         tmux=False,
         stop=False,
         start=start,
+        node_ip=node_ip,
         override_cluster_name=override_cluster_name,
         no_config_cache=no_config_cache,
         port_forward=port_forward,
     )
 
 
-def exec_cluster(config_file: str,
-                 *,
-                 cmd: str = None,
-                 run_env: str = "auto",
-                 screen: bool = False,
-                 tmux: bool = False,
-                 stop: bool = False,
-                 start: bool = False,
-                 override_cluster_name: Optional[str] = None,
-                 no_config_cache: bool = False,
-                 port_forward: Optional[Port_forward] = None,
-                 with_output: bool = False) -> str:
+def _list_all_node_ips(provider):
+    workers = provider.non_terminated_nodes({
+        TAG_RAY_NODE_KIND: NODE_KIND_WORKER
+    })
+    head = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+    nodes = head + workers
+    try:
+        return {provider.external_ip(n): n for n in nodes}
+    except Exception as exc:
+        cli_logger.warning(str(exc))
+        cli_logger.warning("Trying to list internal IPs")
+
+    return {provider.internal_ip(n): n for n in nodes}
+
+
+def exec_cluster(
+        config_file: str,
+        *,
+        cmd: str = None,
+        run_env: str = "auto",
+        screen: bool = False,
+        tmux: bool = False,
+        stop: bool = False,
+        start: bool = False,
+        node_ip: str = None,  # Assumes head node if not provided.
+        override_cluster_name: Optional[str] = None,
+        no_config_cache: bool = False,
+        port_forward: Optional[Port_forward] = None,
+        with_output: bool = False) -> str:
     """Runs a command on the specified cluster.
 
     Arguments:
@@ -872,13 +891,19 @@ def exec_cluster(config_file: str,
     if override_cluster_name is not None:
         config["cluster_name"] = override_cluster_name
     config = _bootstrap_config(config, no_config_cache=no_config_cache)
-
-    head_node = _get_running_head_node(
-        config, config_file, override_cluster_name, create_if_needed=start)
-
     provider = _get_node_provider(config["provider"], config["cluster_name"])
+    if node_ip:
+        node_ip_map = _list_all_node_ips(provider)
+        if node_ip in node_ip_map:
+            node = node_ip_map[node_ip]
+        else:
+            cli_logger.abort(f"Could not find node ip {node_ip} in cluster.")
+    else:
+        node = _get_running_head_node(
+            config, config_file, override_cluster_name, create_if_needed=start)
+
     updater = NodeUpdaterThread(
-        node_id=head_node,
+        node_id=node,
         provider_config=config["provider"],
         provider=provider,
         auth_config=config["auth"],

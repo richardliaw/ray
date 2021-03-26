@@ -118,6 +118,7 @@ class Display(TUIPart):
         self.event_queue = event_queue
         self.current_page = Page.PAGE_NODE_INFO
         self.current_sorting = None
+        self.selected_node_ip_val = None
 
         self.views = {}
 
@@ -133,6 +134,14 @@ class Display(TUIPart):
             self.current_sorting = val
         elif action == "nav":
             self.views[self.current_page].nav(val)
+        elif action == "attach":
+            page_view = self.views[self.current_page]
+            if hasattr(page_view, "select"):
+                selected = page_view.select()
+            if selected:
+                self.selected_node_ip_val = (selected, val)
+            else:
+                self.selected_node_ip_val = ("invalid", "invalid")
         else:
             raise RuntimeError(f"Unknown action: {action}")
 
@@ -387,6 +396,21 @@ class NodeInfoView(TUIPart):
         self.cached = copy.copy(list(self.data_manager.nodes.values()))
         for node in self.cached:
             node.workers = copy.deepcopy(node.workers)
+
+    def select(self):
+        if self.pos_y == -1:
+            return
+
+        sel = -1
+        for node in self.cached:
+            sel += 1
+            if sel == self.pos_y:
+                return node.ip
+
+            for worker in node.workers:
+                sel += 1
+                if sel == self.pos_y:
+                    return node.ip
 
     def nav(self, direction: str):
         if direction == "exit":
@@ -1050,6 +1074,7 @@ class DisplayController:
         ("m", "Sort by Memory", ("sort", "memory"), Page.PAGE_NODE_INFO),
         ("ARROW_DOWN", "Go down", ("nav", "down"), -1),
         ("ARROW_UP", "Go up", ("nav", "up"), -1),
+        ("A", "Attach to node", ("cmd", "cmd_attach"), -1),
         ("\n", "Return", ("nav", "return"), -1),
         ("x", "Exit selection", ("nav", "exit"), 0),
     ]
@@ -1103,6 +1128,20 @@ class DisplayController:
                 else:
                     self.event_queue.put((cmd, val))
 
+    def cmd_attach(self):
+        ts = time.time()
+        self.event_queue.put(("attach", ts))
+        while not self.display.selected_node_ip_val:
+            time.sleep(0.1)
+
+        if self.display.selected_node_ip_val[1] == ts:
+            #  gross two-way dependency
+            self.cmd_stop()
+        else:
+            # somehow it was set incorrectly, so we
+            # reset it.
+            self.display.selected_node_ip_val = None
+
     def cmd_stop(self):
         self.stop_event.set()
 
@@ -1134,3 +1173,9 @@ def live():
             live.update(display.display())
 
     controller.shutdown()
+
+    if display.selected_node_ip_val:
+        return {
+            "command": "attach",
+            "node_ip": display.selected_node_ip_val[0]
+        }

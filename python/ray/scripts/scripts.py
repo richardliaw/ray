@@ -1594,8 +1594,32 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
 
 
 @cli.command()
-def htop():
-    live()
+@click.option(
+    "--config", "-c", required=False, type=str, help="Cluster Configuration.")
+@click.option(
+    "--cluster-name",
+    "-n",
+    required=False,
+    type=str,
+    help="Override the configured cluster name.")
+def htop(config, cluster_name):
+    # TODO: auto-detect cluster + create port with clsuter config
+    next_command = live()
+    print(next_command)
+    if next_command and isinstance(next_command, dict) and config:
+        if next_command.get("command") == "attach":
+            attach_cluster(
+                config,
+                start=False,
+                screen=False,
+                tmux=False,
+                override_cluster_name=cluster_name,
+                node_ip=next_command.get("node_ip"),
+                no_config_cache=False,
+                new=False)
+        else:
+            cli_logger.abort(
+                f"Got {next_command} but did not get 'attach' command.")
 
 
 @cli.command(hidden=True)
