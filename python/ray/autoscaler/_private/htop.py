@@ -129,6 +129,7 @@ class Display(TUIPart):
             return
 
         if action == "page":
+            self.views[self.current_page].exit()
             self.current_page = val
         elif action == "sort":
             self.current_sorting = val
@@ -164,6 +165,12 @@ class Display(TUIPart):
             else:
                 raise RuntimeError(f"Unknown page: {self.current_page}")
 
+        try:
+            height = os.get_terminal_size().lines - 17
+        except Exception:
+            height = -1
+
+        self.views[self.current_page].set_height(height)
         root["body"].update(self.views[self.current_page])
 
         root["footer"].update(Footer(self.data_manager, self.current_page))
@@ -324,6 +331,8 @@ class Footer(TUIPart):
 class NodeInfoView(TUIPart):
     def __init__(self, data_manager: "DataManager", sort_by: str = "cpu"):
         super(NodeInfoView, self).__init__(data_manager)
+        self.height = -1
+
         self.sort_by = sort_by
 
         self.show = "table"  # table|log
@@ -335,11 +344,16 @@ class NodeInfoView(TUIPart):
 
         # log view
         self.print_logs = None
+        self.log_y = 0
+
+    def set_height(self, height: int):
+        self.height = height
 
     def exit(self):
         if self.show == "log":
             self.show = "table"
             self.print_logs = None
+            self.log_y = 0
         else:
             self.pos_y = -1
             self.frozen = False
@@ -422,6 +436,15 @@ class NodeInfoView(TUIPart):
             self.choose()
             return
 
+        if self.show == "log":
+            y = 0
+            if direction == "up":
+                y = -1
+            elif direction == "down":
+                y = 1
+            self.log_y = min(0, self.log_y + y)
+            return
+
         self.frozen = True
         if not self.cached:
             self._cache_nodes()
@@ -466,12 +489,16 @@ class NodeInfoView(TUIPart):
                 else:
                     style = "lightblue"
 
+                if self.height is not None and self.height > -1:
+                    end = max(self.height, len(content_list) + self.log_y)
+                    start = end - self.height
+                    cont = content_list[start:end]
+                else:
+                    cont = content_list
+
                 contents.append(
                     Panel(
-                        Text(
-                            "\n".join(content_list),
-                            style="default",
-                            justify="left"),
+                        Text("\n".join(cont), style="default", justify="left"),
                         style=style,
                         expand=True,
                         title=name))
@@ -561,8 +588,13 @@ class MemoryView(TUIPart):
     def __init__(self, data_manager: "DataManager"):
         super(MemoryView, self).__init__(data_manager)
 
+        self.height = -1
+
         # table view
         self.pos_y = -1
+
+    def set_height(self, height: int):
+        self.height = height
 
     def exit(self):
         self.pos_y = -1
