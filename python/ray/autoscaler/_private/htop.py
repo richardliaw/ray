@@ -457,25 +457,42 @@ class NodeTableContainer:
         self.sort_by = sort_by
         self.highlight = highlight
 
+        self.columns = [
+            ("Host/PID", 0),
+            ("Process", 0),
+            ("Uptime", 100),
+            ("CPU", 0),
+            ("RAM", 0),
+            ("GPU", 0),
+            ("Plasma", 0),
+            ("Disk", 0),
+            ("Sent", 160),
+            ("Received", 160),
+            ("Logs", 120),
+            ("Errors", 120),
+        ]
+
     def __rich__(self) -> Table:
         table = Table(show_header=True, header_style="bold magenta")
 
-        table.add_column("Host/PID", justify="center")
-        table.add_column("Process", justify="center")
-        table.add_column("Uptime", justify="center")
-        table.add_column("CPU", justify="center")
-        table.add_column("RAM", justify="center")
-        table.add_column("GPU", justify="center")
-        table.add_column("Plasma", justify="center")
-        table.add_column("Disk", justify="center")
-        table.add_column("Sent", justify="center")
-        table.add_column("Received", justify="center")
-        table.add_column("Logs", justify="center")
-        table.add_column("Errors", justify="center")
+        try:
+            size = os.get_terminal_size().columns
+        except Exception:
+            size = 180
+
+        column_indices = [
+            i for i in range(len(self.columns)) if size >= self.columns[i][1]
+        ]
+
+        for i in column_indices:
+            table.add_column(self.columns[i][0], justify="center")
 
         for node in self.nodes:
+            node_row = node.node_row(extra=None)[1:]
+            node_cols = [node_row[i] for i in column_indices]
+
             table.add_row(
-                *node.node_row(extra=None)[1:],
+                *node_cols,
                 style="blue on white"
                 if table.row_count == self.highlight else "",
                 end_section=not node.expanded)
@@ -495,8 +512,10 @@ class NodeTableContainer:
                         else:
                             style = ""
 
+                    worker_row = row[2:]
+                    worker_cols = [worker_row[i] for i in column_indices]
                     table.add_row(
-                        *row[2:],
+                        *worker_cols,
                         style=style,
                         end_section=i == len(workers_rows) - 1)
 
