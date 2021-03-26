@@ -632,8 +632,8 @@ class NodeTableContainer:
             ("GPU", 0),
             ("Plasma", 0),
             ("Disk", 0),
-            ("Sent", 160),
-            ("Received", 160),
+            ("Sent", 2500),
+            ("Received", 2500),
             ("Logs", 120),
             ("Errors", 120),
         ]
