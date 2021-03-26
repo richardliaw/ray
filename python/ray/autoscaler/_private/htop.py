@@ -82,8 +82,8 @@ main_theme = Theme({
 })
 
 _styles = copy.deepcopy(main_theme.styles)
-_styles["headline"] = Style.parse("magenta")
-_styles["table.border"] = Style.parse("black")
+_styles["headline"] = Style.parse("cyan")
+_styles["table.border"] = Style.parse("#555555")
 day_theme = Theme(_styles)
 
 
