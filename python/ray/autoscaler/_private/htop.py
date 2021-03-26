@@ -84,6 +84,18 @@ def _fmt_timedelta(delta: datetime.timedelta):
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def camel_to_snake(string):
+    parts = ["_" + i.lower() if i.isupper() else i for i in string]
+    return "".join(parts).lstrip("_")
+
+
+def camel_to_snake_dict(dict_):
+    result = {}
+    for k, v in dict_.items():
+        result[camel_to_snake(k)] = v
+    return result
+
+
 class Page(Enum):
     PAGE_NODE_INFO = auto()
     PAGE_MEMORY_VIEW = auto()
@@ -275,9 +287,7 @@ class MemoryTable(TUIPart):
     def summary_row(self, group_by="NODE_ADDRESS", sort_by="OBJECT_SIZE"):
         group_by, sort_by = get_group_by_type(group_by), get_sorting_type(
             sort_by)
-        memory_table = construct_memory_table(self.data_manager.memory_data,
-                                              group_by, sort_by).as_dict()
-        for key, group in memory_table["group"].items():
+        for key, group in self.data_manager.memory_data["group"].items():
             yield self.summary_table(group), self.object_table(group)
 
     def summary_table(self, group) -> Table:
@@ -314,6 +324,7 @@ class MemoryTable(TUIPart):
         return table
 
     def summary_data(self, summary):
+        summary = camel_to_snake_dict(summary)
         return (
             Text(_fmt_bytes(summary["total_object_size"]), justify="right"),
             Text(str(summary["total_local_ref_count"]), justify="right"),
@@ -343,6 +354,7 @@ class MemoryTable(TUIPart):
 
     def object_rows(self, entries):
         for entry in entries:
+            entry = camel_to_snake_dict(entry)
             yield (
                 Text(entry["node_ip_address"], justify="right"),
                 Text(str(entry["pid"]), justify="right"),
@@ -378,20 +390,12 @@ class DataManager:
         self.mock_autoscaler = os.path.expanduser(
             mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
-        self.lm_summary = None
+        self.cluster_info = None
 
+        self._fetch_enabled = False
         self.memory_data = None
 
         self.update()
-
-    def _create_redis_client(
-            self, address,
-            redis_password=ray_constants.REDIS_DEFAULT_PASSWORD):
-        import ray._private.services as services
-        if not address:
-            address = services.get_ray_address_to_use_or_die()
-        redis_client = services.create_redis_client(address, redis_password)
-        self.redis_client = redis_client
 
     def _create_global_state(
             self, address,
@@ -418,30 +422,27 @@ class DataManager:
 
     def _load_memory_info(self):
         # Fetch core memory worker stats, store as a dictionary
-        state = self._create_global_state(self.ray_address)
-        core_worker_stats = []
-        for raylet in state.node_table():
-            stats = node_stats_to_dict(
-                node_stats(raylet["NodeManagerAddress"],
-                           raylet["NodeManagerPort"]))
-            core_worker_stats.extend(stats["coreWorkersStats"])
-            assert type(stats) is dict and "coreWorkersStats" in stats
+        # state = self._create_global_state(self.ray_address)
+        # core_worker_stats = []
+        # for raylet in state.node_table():
+        #     stats = node_stats_to_dict(
+        #         node_stats(raylet["NodeManagerAddress"],
+        #                    raylet["NodeManagerPort"]))
+        #     core_worker_stats.extend(stats["coreWorkersStats"])
+        #     assert type(stats) is dict and "coreWorkersStats" in stats
+        # print(core_worker_stats)
+        # self.memory_data = core_worker_stats
 
-        self.memory_data = core_worker_stats
-
-        # if self.mock_memory_cache:
-        #     resp_json = self.mock_memory_cache
-        # else:
-        #     resp = requests.get(f"{self.url}/memory/memory_table")
-        #     resp_json = resp.json()
-        # resp_data = resp_json["data"]
-        # self.memory_table = resp_data
+        if self.mock_memory_cache:
+            resp_json = self.mock_memory_cache
+        else:
+            # NOTE: This may not load instantaneously.
+            resp = requests.get(f"{self.url}/memory/memory_table")
+            resp_json = resp.json()
+        resp_data = resp_json["data"]
+        self.memory_data = resp_data.get("memoryTable")
 
     def _load_autoscaler_state(self):
-        def camel_to_snake(str):
-            parts = ["_" + i.lower() if i.isupper() else i for i in str]
-            return "".join(parts).lstrip("_")
-
         as_dict = None
         if self.mock_autoscaler:
             if isinstance(self.mock_autoscaler, str):
@@ -453,24 +454,13 @@ class DataManager:
             as_dict = resp_json["data"]["clusterStatus"]
 
         if as_dict:
-            load_metrics = as_dict["loadMetricsReport"]
-            load_metrics = {
-                camel_to_snake(k): v
-                for k, v in load_metrics.items()
-            }
-            self.lm_summary = LoadMetricsSummary(**load_metrics)
+            load_metrics = camel_to_snake_dict(as_dict["loadMetricsReport"])
+            self.cluster_info = LoadMetricsSummary(**load_metrics)
             if "autoscalingStatus" in as_dict:
-                autoscaling_status = as_dict["autoscalingStatus"]
-                autoscaling_status = {
-                    camel_to_snake(k): v
-                    for k, v in autoscaling_status.items()
-                }
+                autoscaling_status = camel_to_snake_dict(
+                    as_dict["autoscalingStatus"])
                 self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
             # TODO: process the autoscaler data.
-
-    def _load_memory_state(self):
-        if not self.redis_client:
-            self._create_redis_client(self.ray_address)
 
 
 class StaticProgress:
