@@ -136,12 +136,13 @@ class Display(TUIPart):
             self.views[self.current_page].nav(val)
         elif action == "attach":
             page_view = self.views[self.current_page]
+            selected = None
             if hasattr(page_view, "select"):
                 selected = page_view.select()
             if selected:
                 self.selected_node_ip_val = (selected, val)
             else:
-                self.selected_node_ip_val = ("invalid", "invalid")
+                self.selected_node_ip_val = None
         else:
             raise RuntimeError(f"Unknown action: {action}")
 
@@ -605,6 +606,18 @@ class MemoryTable(TUIPart):
         super(MemoryTable, self).__init__(data_manager)
         self.offset = offset
 
+        self.obj_columns = [
+            ("IP", 120),
+            ("PID", 140),
+            ("Type", 200),
+            ("Call site", 160),
+            ("Size", 0),
+            ("Reference Type", 0),
+            ("Object Reference", 0),
+        ]
+
+        self.summary_break = 160
+
     def __rich__(self) -> Table:
         table = Table(
             show_header=False,
@@ -614,36 +627,47 @@ class MemoryTable(TUIPart):
         table.add_column()
         table.add_column()
 
-        summary_table_stub = self.summary_table_stub()
-        object_table_stub = self.object_table_stub()
+        try:
+            size = os.get_terminal_size().columns
+        except Exception:
+            size = 180
+
+        summary_table_stub = self.summary_table_stub(size=size)
+        object_table_stub = self.object_table_stub(size=size)
 
         ignore = self.offset
         for key, group in self.data_manager.memory_data["group"].items():
             ign1 = self.add_summary_rows(
-                summary_table_stub, group, ignore=ignore)
+                summary_table_stub, group, size=size, ignore=ignore)
             ign2 = self.add_object_rows(
-                object_table_stub, group, ignore=ignore)
+                object_table_stub, group, size=size, ignore=ignore)
             ignore = max(ign1, ign2)
 
         table.add_row(summary_table_stub, object_table_stub)
 
         return table
 
-    def summary_table_stub(self) -> Table:
+    def summary_table_stub(self, size: int = 200) -> Table:
         table = Table(
             title="Node summary",
             show_header=False,
             expand=False,
             pad_edge=True,
             padding=(0, 1))
+
         table.add_column()
         table.add_column()
-        table.add_column()
-        table.add_column()
+        if size >= 160:
+            table.add_column()
+            table.add_column()
 
         return table
 
-    def add_summary_rows(self, table: Table, group: Dict, ignore: int = -1):
+    def add_summary_rows(self,
+                         table: Table,
+                         group: Dict,
+                         size: int = 200,
+                         ignore: int = -1):
         columns = [
             "Memory used",
             "Local refs",
@@ -659,28 +683,34 @@ class MemoryTable(TUIPart):
                 None)) if len(group["entries"]) > 0 else None
 
         if ignore < 0:
-            table.add_row(
+            cols = (
                 Text("Node:", style="bold magenta", justify="right"),
                 Text(ip_addr, style="bold", justify="right"),
                 "",
                 "",
-                end_section=True)
+            )
+
+            if size < self.summary_break:
+                cols = cols[:2]
+
+            table.add_row(*cols, end_section=True)
         ignore -= 1
 
         colvals = list(zip(columns, self.summary_data(group["summary"])))
 
-        for i in range(3):
-            if ignore < 0:
-                table.add_row(
-                    Text(colvals[i][0], style="bold magenta", justify="right"),
-                    colvals[i][1],
-                    Text(
-                        colvals[i + 3][0],
-                        style="bold magenta",
-                        justify="right"),
-                    colvals[i + 3][1],
-                    end_section=i == 2)
-            ignore -= 1
+        sidebyside = 2 if size >= self.summary_break else 1
+        row = []
+        for i in range(6):
+            row += [
+                Text(colvals[i][0], style="bold magenta", justify="right"),
+                colvals[i][1]
+            ]
+
+            if len(row) == sidebyside * 2:
+                if ignore < 0:
+                    table.add_row(*row, end_section=i == 5)
+                ignore -= 1
+                row = []
 
         return ignore
 
@@ -695,29 +725,39 @@ class MemoryTable(TUIPart):
             Text(str(summary["total_actor_handles"]), justify="right"),
         )
 
-    def object_table_stub(self) -> Table:
+    def object_table_stub(self, size: int = 200) -> Table:
         table = Table(
             show_header=True,
             title="Node objects",
             header_style="bold magenta")
-        table.add_column("IP", justify="center")
-        table.add_column("PID", justify="center")
-        table.add_column("Type", justify="center")
-        table.add_column("Call site", justify="center")
-        table.add_column("Size", justify="center")
-        table.add_column("Reference Type", justify="center")
-        table.add_column("Object Reference", justify="center")
+
+        column_indices = [
+            i for i in range(len(self.obj_columns))
+            if size >= self.obj_columns[i][1]
+        ]
+
+        for i in column_indices:
+            table.add_column(self.obj_columns[i][0], justify="center")
 
         return table
 
-    def add_object_rows(self, table: Table, group: Dict, ignore: int = -1):
+    def add_object_rows(self,
+                        table: Table,
+                        group: Dict,
+                        size: int = 200,
+                        ignore: int = -1):
+        column_indices = [
+            i for i in range(len(self.obj_columns))
+            if size >= self.obj_columns[i][1]
+        ]
+
         # ip_addr = None
         for i, entry in enumerate(group["entries"]):
             entry = camel_to_snake_dict(entry)
 
             # ip_addr = entry["node_ip_address"]
             if ignore < 0:
-                table.add_row(
+                row = (
                     Text(entry["node_ip_address"], justify="right"),
                     Text(str(entry["pid"]), justify="right"),
                     Text(entry["type"], justify="right"),
@@ -725,10 +765,15 @@ class MemoryTable(TUIPart):
                     Text(_fmt_bytes(entry["object_size"]), justify="right"),
                     Text(entry["reference_type"], justify="right"),
                     Text(entry["object_ref"], justify="right"),
-                    end_section=i == len(group["entries"]) - 1)
+                )
+                cols = [row[i] for i in column_indices]
+
+                table.add_row(
+                    *cols, end_section=i == len(group["entries"]) - 1)
+
             ignore -= 1
         if ignore < 0:
-            table.add_row(
+            row = (
                 "",  # Text(ip_addr, style="bold", justify="center"),
                 "",
                 "",
@@ -738,7 +783,10 @@ class MemoryTable(TUIPart):
                     justify="right"),
                 "",
                 "",
-                end_section=True)
+            )
+            cols = [row[i] for i in column_indices]
+
+            table.add_row(*cols, end_section=True)
         ignore -= 1
         return ignore
 
