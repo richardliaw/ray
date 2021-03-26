@@ -325,7 +325,6 @@ class MemoryTable(TUIPart):
 
     def summary_data(self, summary):
         summary = camel_to_snake_dict(summary)
-        # import ipdb; ipdb.set_trace()
         return (
             Text(_fmt_bytes(summary["total_object_size"]), justify="right"),
             Text(str(summary["total_local_ref_count"]), justify="right"),
@@ -441,7 +440,7 @@ class DataManager:
             resp = requests.get(f"{self.url}/memory/memory_table")
             resp_json = resp.json()
         resp_data = resp_json["data"]
-        self.memory_data = resp_data["memoryTable"]
+        self.memory_data = resp_data.get("memoryTable")
 
     def _load_autoscaler_state(self):
         as_dict = None
