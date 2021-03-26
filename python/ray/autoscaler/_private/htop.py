@@ -390,7 +390,7 @@ class DataManager:
         self.mock_autoscaler = os.path.expanduser(
             mock_a6s) if mock_a6s else None
         self.autoscaler_summary = None
-        self.lm_summary = None
+        self.cluster_info = None
 
         self._fetch_enabled = False
         self.memory_data = None
@@ -454,18 +454,11 @@ class DataManager:
             as_dict = resp_json["data"]["clusterStatus"]
 
         if as_dict:
-            load_metrics = as_dict["loadMetricsReport"]
-            load_metrics = {
-                camel_to_snake(k): v
-                for k, v in load_metrics.items()
-            }
-            self.lm_summary = LoadMetricsSummary(**load_metrics)
+            load_metrics = camel_to_snake_dict(as_dict["loadMetricsReport"])
+            self.cluster_info = LoadMetricsSummary(**load_metrics)
             if "autoscalingStatus" in as_dict:
-                autoscaling_status = as_dict["autoscalingStatus"]
-                autoscaling_status = {
-                    camel_to_snake(k): v
-                    for k, v in autoscaling_status.items()
-                }
+                autoscaling_status = camel_to_snake_dict(
+                    as_dict["autoscalingStatus"])
                 self.autoscaler_summary = AutoscalerSummary(autoscaling_status)
             # TODO: process the autoscaler data.
 
