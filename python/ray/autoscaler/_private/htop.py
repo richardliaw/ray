@@ -409,7 +409,10 @@ class NodeInfoView(TUIPart):
 
                 contents.append(
                     Panel(
-                        Text("\n".join(content_list), justify="left"),
+                        Text(
+                            "\n".join(content_list),
+                            style="default",
+                            justify="left"),
                         style=style,
                         expand=True,
                         title=name))
