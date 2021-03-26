@@ -12,7 +12,6 @@ import threading
 import time
 
 import requests
-from ray.state import GlobalState
 from rich import get_console
 from rich.columns import Columns
 from rich.console import RenderGroup
@@ -22,6 +21,9 @@ from rich.panel import Panel
 from rich.progress import BarColumn, Task, TaskID, TextColumn
 from rich.table import Table
 from rich.text import Text
+
+from ray.state import GlobalState
+from ray.util.client import ray as ray_client
 
 import ray.ray_constants as ray_constants
 
@@ -183,9 +185,31 @@ class Meta(TUIPart):
 
 class ClusterResources(TUIPart):
     def __rich__(self) -> Panel:
-        return Panel(
-            Text(f"Cluster resources", justify="center"),
-            title="Cluster resources")
+        if not self.data_manager.cluster_resources:
+            content = Text(
+                f"Cluster resources not available", justify="center")
+        else:
+            table = Table(expand=True, show_header=False)
+            table.add_column("")
+            table.add_column("")
+            table.add_column("")
+            table.add_column("")
+
+            row = []
+            for resource in sorted(self.data_manager.cluster_resources):
+                amount = self.data_manager.cluster_resources[resource]
+                row.append(
+                    Text(resource, style="bold magenta", justify="right"))
+                row.append(Text(str(amount), justify="right"))
+                if len(row) == 4:
+                    table.add_row(*row)
+                    row = []
+            if len(row) > 0:
+                table.add_row(*row)
+
+            content = table
+
+        return Panel(content, title="Cluster resources")
 
 
 class AutoscalerStatus(TUIPart):
@@ -480,8 +504,33 @@ class NodeTableContainer:
 
 
 class MemoryView(TUIPart):
+    def __init__(self, data_manager: "DataManager"):
+        super(MemoryView, self).__init__(data_manager)
+
+        # table view
+        self.pos_y = -1
+
+    def exit(self):
+        self.pos_y = -1
+
     def nav(self, direction: str):
-        pass
+        if direction == "exit":
+            self.exit()
+            return
+
+        summary_lens = len(self.data_manager.memory_data["group"]) * 4
+        entry_lens = sum(
+            len(group["entries"])
+            for group in self.data_manager.memory_data["group"])
+
+        num_rows = max(summary_lens, entry_lens)
+
+        y = 0
+        if direction == "up":
+            y = -1
+        elif direction == "down":
+            y = 1
+        self.pos_y = max(0, min(num_rows - 1, self.pos_y + y))
 
     def __rich__(self) -> Layout:
         layout = Layout()
@@ -493,6 +542,10 @@ class MemoryView(TUIPart):
 
 
 class MemoryTable(TUIPart):
+    def __init__(self, data_manager: "DataManager", offset: int = -1):
+        super(MemoryTable, self).__init__(data_manager)
+        self.offset = offset
+
     def __rich__(self) -> Table:
         table = Table(
             show_header=False,
@@ -505,9 +558,13 @@ class MemoryTable(TUIPart):
         summary_table_stub = self.summary_table_stub()
         object_table_stub = self.object_table_stub()
 
+        ignore = self.offset
         for key, group in self.data_manager.memory_data["group"].items():
-            self.add_summary_rows(summary_table_stub, group)
-            self.add_object_rows(object_table_stub, group)
+            ign1 = self.add_summary_rows(
+                summary_table_stub, group, ignore=ignore)
+            ign2 = self.add_object_rows(
+                object_table_stub, group, ignore=ignore)
+            ignore = max(ign1, ign2)
 
         table.add_row(summary_table_stub, object_table_stub)
 
@@ -527,7 +584,7 @@ class MemoryTable(TUIPart):
 
         return table
 
-    def add_summary_rows(self, table: Table, group: Dict):
+    def add_summary_rows(self, table: Table, group: Dict, ignore: int = -1):
         columns = [
             "Memory used",
             "Local refs",
@@ -542,24 +599,31 @@ class MemoryTable(TUIPart):
                 "node_ip_address",
                 None)) if len(group["entries"]) > 0 else None
 
-        table.add_row(
-            Text("Node:", style="bold magenta", justify="right"),
-            Text(ip_addr, style="bold", justify="right"),
-            "",
-            "",
-            end_section=True)
+        if ignore < 0:
+            table.add_row(
+                Text("Node:", style="bold magenta", justify="right"),
+                Text(ip_addr, style="bold", justify="right"),
+                "",
+                "",
+                end_section=True)
+        ignore -= 1
 
         colvals = list(zip(columns, self.summary_data(group["summary"])))
 
         for i in range(3):
-            table.add_row(
-                Text(colvals[i][0], style="bold magenta", justify="right"),
-                colvals[i][1],
-                Text(colvals[i + 3][0], style="bold magenta", justify="right"),
-                colvals[i + 3][1],
-                end_section=i == 2)
+            if ignore < 0:
+                table.add_row(
+                    Text(colvals[i][0], style="bold magenta", justify="right"),
+                    colvals[i][1],
+                    Text(
+                        colvals[i + 3][0],
+                        style="bold magenta",
+                        justify="right"),
+                    colvals[i + 3][1],
+                    end_section=i == 2)
+            ignore -= 1
 
-        return table
+        return ignore
 
     def summary_data(self, summary):
         summary = camel_to_snake_dict(summary)
@@ -587,36 +651,41 @@ class MemoryTable(TUIPart):
 
         return table
 
-    def add_object_rows(self, table: Table, group: Dict):
+    def add_object_rows(self, table: Table, group: Dict, ignore: int = -1):
         # ip_addr = None
         for i, entry in enumerate(group["entries"]):
             entry = camel_to_snake_dict(entry)
 
             # ip_addr = entry["node_ip_address"]
+            if ignore < 0:
+                table.add_row(
+                    Text(entry["node_ip_address"], justify="right"),
+                    Text(str(entry["pid"]), justify="right"),
+                    Text(entry["type"], justify="right"),
+                    Text(entry["call_site"], justify="right"),
+                    Text(_fmt_bytes(entry["object_size"]), justify="right"),
+                    Text(entry["reference_type"], justify="right"),
+                    Text(entry["object_ref"], justify="right"),
+                    end_section=i == len(group["entries"]) - 1)
+                ignore -= 1
+        if ignore < 0:
             table.add_row(
-                Text(entry["node_ip_address"], justify="right"),
-                Text(str(entry["pid"]), justify="right"),
-                Text(entry["type"], justify="right"),
-                Text(entry["call_site"], justify="right"),
-                Text(_fmt_bytes(entry["object_size"]), justify="right"),
-                Text(entry["reference_type"], justify="right"),
-                Text(entry["object_ref"], justify="right"),
-                end_section=i == len(group["entries"]) - 1)
-        table.add_row(
-            "",  # Text(ip_addr, style="bold", justify="center"),
-            "",
-            "",
-            Text("Total object size", style="bold", justify="right"),
-            Text(
-                _fmt_bytes(group["summary"]["totalObjectSize"]),
-                justify="right"),
-            "",
-            "",
-            end_section=True)
+                "",  # Text(ip_addr, style="bold", justify="center"),
+                "",
+                "",
+                Text("Total object size", style="bold", justify="right"),
+                Text(
+                    _fmt_bytes(group["summary"]["totalObjectSize"]),
+                    justify="right"),
+                "",
+                "",
+                end_section=True)
+            ignore -= 1
+        return ignore
 
 
 class DataManager:
-    def __init__(self, url: str):
+    def __init__(self, url: str, client_hostport: Optional[str] = None):
         self.url = url
 
         mock = os.environ.get("RAY_HTOP_MOCK")
@@ -631,6 +700,21 @@ class DataManager:
 
         self.nodes = {}
 
+        self.cluster_resources_last = 0
+        self.cluster_resources_refresh_time = 10
+        self.cluster_resources = None
+
+        # Todo: remove mock
+        if not client_hostport:
+            self.cluster_resources = {
+                "CPU": 16.0,
+                "GPU": 2.0,
+                "object_store_memory": 2241473740.0,
+                "node:192.168.0.29": 1.0,
+                "memory": 4482947483.0,
+                "node:192.168.0.28": 1.0
+            }
+
         # Autoscaler info
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
         self.mock_autoscaler = os.path.expanduser(
@@ -643,6 +727,10 @@ class DataManager:
 
         if self._fetch_enabled:
             requests.get(f"{self.url}/memory/set_fetch?shouldFetch=true")
+
+        self.ray_client = None
+        if client_hostport:
+            ray_client.connect(client_hostport)
 
         self.update()
 
@@ -669,6 +757,7 @@ class DataManager:
 
     def update(self):
         self._load_nodes()
+        self._load_cluster_resources()
         self._load_autoscaler_state()
         self._load_memory_info()
 
@@ -689,6 +778,14 @@ class DataManager:
             if nid not in self.nodes:
                 self.nodes[nid] = Node()
             self.nodes[nid].update(node_dict)
+
+    def _load_cluster_resources(self):
+        if not ray_client.is_connected():
+            return
+        if time.time(
+        ) > self.cluster_resources_last + self.cluster_resources_refresh_time:
+            self.cluster_resources = ray_client.cluster_resources()
+            self.cluster_resources_last = time.time()
 
     def _load_memory_info(self):
         if self.mock_memory_cache:
@@ -1041,7 +1138,7 @@ def live():
     should_stop = threading.Event()
     event_queue = Queue()
 
-    data_manager = DataManager("http://localhost:8265")
+    data_manager = DataManager("http://localhost:8265")  # , "localhost:10001")
     display = Display(data_manager, event_queue)
 
     controller = DisplayController(display, should_stop, event_queue)
