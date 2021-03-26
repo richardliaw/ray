@@ -691,11 +691,13 @@ class Node:
 
 class DisplayController:
     bindings = [
-        ("N", "Node view", "cmd_view_node", 0),
-        ("M", "Memory view", "cmd_view_memory", 0),
-        ("q", "Quit", "cmd_stop", 0),
-        ("c", "Sort by CPU", "cmd_sort_cpu", Page.PAGE_NODE_INFO),
-        ("m", "Sort by Memory", "cmd_sort_memory", Page.PAGE_NODE_INFO),
+        ("N", "Node view", ("page", Page.PAGE_NODE_INFO), 0),
+        ("M", "Memory view", ("page", Page.PAGE_MEMORY_VIEW), 0),
+        ("q", "Quit", ("cmd", "cmd_stop"), 0),
+        ("c", "Sort by CPU", ("sort", "cpu"), Page.PAGE_NODE_INFO),
+        ("m", "Sort by Memory", ("sort", "memory"), Page.PAGE_NODE_INFO),
+        ("ARROW_DOWN", "Go down", ("nav", "down"), -1),
+        ("ARROW_UP", "Go up", ("nav", "up"), -1),
     ]
 
     def __init__(self, display: Display, stop_event: threading.Event,
@@ -706,9 +708,27 @@ class DisplayController:
         self.thread = None
 
     def listen(self):
+        def _parse_escape():
+            first = wait_key_press()
+            second = wait_key_press()
+
+            if ord(first) == 91:
+                # Arrow keys
+                if ord(second) == 65:
+                    return "ARROW_UP"
+                elif ord(second) == 66:
+                    return "ARROW_DOWN"
+                elif ord(second) == 67:
+                    return "ARROW_RIGHT"
+                elif ord(second) == 68:
+                    return "ARROW_LEFT"
+            return ""
+
         def _run():
             while not self.stop_event.is_set():
                 key = wait_key_press()
+                if ord(key) == 27:
+                    key = _parse_escape()
                 self.on_press(key)
 
         self.thread = threading.Thread(target=_run)
@@ -719,25 +739,16 @@ class DisplayController:
         self.thread.join()
 
     def on_press(self, key):
-        for k, d, cmd, _ in self.bindings:
+        for k, d, (cmd, val), _ in self.bindings:
             if key == k:
-                fn = getattr(self, cmd, "cmd_invalid")
-                fn()
+                if cmd == "cmd":
+                    fn = getattr(self, val, "cmd_invalid")
+                    fn()
+                else:
+                    self.event_queue.put((cmd, val))
 
     def cmd_stop(self):
         self.stop_event.set()
-
-    def cmd_view_node(self):
-        self.event_queue.put(("page", Page.PAGE_NODE_INFO))
-
-    def cmd_view_memory(self):
-        self.event_queue.put(("page", Page.PAGE_MEMORY_VIEW))
-
-    def cmd_sort_cpu(self):
-        self.event_queue.put(("sort", "cpu"))
-
-    def cmd_sort_memory(self):
-        self.event_queue.put(("sort", "memory"))
 
     def cmd_invalid(self):
         print("Invalid command called.")
