@@ -521,7 +521,7 @@ class MemoryView(TUIPart):
         summary_lens = len(self.data_manager.memory_data["group"]) * 4
         entry_lens = sum(
             len(group["entries"])
-            for group in self.data_manager.memory_data["group"])
+            for group in self.data_manager.memory_data["group"].values())
 
         num_rows = max(summary_lens, entry_lens)
 
@@ -530,13 +530,19 @@ class MemoryView(TUIPart):
             y = -1
         elif direction == "down":
             y = 1
-        self.pos_y = max(0, min(num_rows - 1, self.pos_y + y))
+        self.pos_y = max(-1, min(num_rows - 1, self.pos_y + y))
 
     def __rich__(self) -> Layout:
         layout = Layout()
 
+        title = "Memory view"
+        if self.pos_y >= 0:
+            title += " [blue](scrolling)"
+
         layout.update(
-            Panel(MemoryTable(self.data_manager), title="Memory view"))
+            Panel(
+                MemoryTable(self.data_manager, offset=self.pos_y),
+                title=title))
 
         return layout
 
@@ -667,7 +673,7 @@ class MemoryTable(TUIPart):
                     Text(entry["reference_type"], justify="right"),
                     Text(entry["object_ref"], justify="right"),
                     end_section=i == len(group["entries"]) - 1)
-                ignore -= 1
+            ignore -= 1
         if ignore < 0:
             table.add_row(
                 "",  # Text(ip_addr, style="bold", justify="center"),
@@ -680,7 +686,7 @@ class MemoryTable(TUIPart):
                 "",
                 "",
                 end_section=True)
-            ignore -= 1
+        ignore -= 1
         return ignore
 
 
