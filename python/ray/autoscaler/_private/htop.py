@@ -236,6 +236,10 @@ class Display(TUIPart):
             height = -1
 
         self.views[self.current_page].set_height(height)
+
+        if self.current_page == Page.PAGE_NODE_INFO:
+            self.views[self.current_page].set_sorting(self.current_sorting)
+
         root["body"].update(self.views[self.current_page])
 
         root["footer"].update(Footer(self.data_manager, self.current_page))
@@ -422,7 +426,7 @@ class RayCredits(TUIPart):
 
     def __rich__(self):
         return Panel(
-            Text(RAY_LOGO_LARGE, justify="left", style="#00ffff"),
+            Text(RAY_LOGO_LARGE, justify="left", style="#00ffff blink"),
             title="Ray TUI",
             style="#00ffff")
 
@@ -447,6 +451,9 @@ class NodeInfoView(TUIPart):
 
     def set_height(self, height: int):
         self.height = height
+
+    def set_sorting(self, sort_by: str):
+        self.sort_by = sort_by
 
     def exit(self):
         if self.show == "log":
@@ -1101,7 +1108,7 @@ class Node:
         def _worker_id(worker):
             return hash((
                 worker["pid"],
-                worker["jobId"],
+                # worker["jobId"],
                 # worker["coreWorkerStats"][0]["workerId"],
             ))
 
@@ -1172,8 +1179,8 @@ class Node:
             task.completed = gpu_dict["memory_used"]
             task.total = gpu_dict["memory_total"]
 
-        plasma_used = self.raylet["objectStoreUsedMemory"]
-        plasma_avail = self.raylet["objectStoreAvailableMemory"]
+        plasma_used = self.raylet.get("objectStoreUsedMemory", 0)
+        plasma_avail = self.raylet.get("objectStoreAvailableMemory", 0)
 
         self.plasma_task.completed = plasma_used / plasma_avail / 100
 
@@ -1188,7 +1195,8 @@ class Node:
             (cpu_progress, cpu_task), \
                 (memory_progress, memory_task) = self.worker_progresses[pid]
 
-            memory_percent = worker["memoryInfo"]["rss"] / self.mem[0]
+            memory_percent = worker.get("memoryInfo", {}).get("rss",
+                                                              0) / self.mem[0]
 
             cpu_task.completed = worker["cpuPercent"]
             memory_task.completed = memory_percent
@@ -1266,7 +1274,10 @@ class Node:
                 extra_val,
                 worker.get("legacy", False),
                 Text(str(worker["pid"]), justify="right"),
-                Text(worker["cmdline"][0], justify="right", no_wrap=True),
+                Text(
+                    worker.get("cmdline", [""])[0],
+                    justify="right",
+                    no_wrap=True),
                 Text(f"{_fmt_timedelta(uptime)}", justify="right"),
                 cpu_progress,
                 memory_progress,
