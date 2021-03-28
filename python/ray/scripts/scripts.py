@@ -1594,8 +1594,7 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
 
 
 @cli.command()
-@click.option(
-    "--config", "-c", required=False, type=str, help="Cluster Configuration.")
+@click.argument("config", required=False, type=str)
 @click.option(
     "--cluster-name",
     "-n",
@@ -1603,16 +1602,48 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
     type=str,
     help="Override the configured cluster name.")
 def htop(config, cluster_name):
-    # TODO: auto-detect cluster + create port with clsuter config
-    next_command = live()
+    # TODO: auto-detect cluster + create port with cluster config
+    dashboard_url = f"http://localhost:8265"
+
+    port_process = None
+    # if config:
+    #     port = 8265
+    #     remote_port = 18265
+    #     port_forward = [
+    #         (port, remote_port),
+    #     ]
+    #     click.echo("Attempting to establish dashboard locally at"
+    #                " localhost:{} connected to"
+    #                " remote port {}".format(port, remote_port))
+    #     # We want to probe with a no-op that returns quickly to avoid
+    #     # exceptions caused by network errors.
+    #     def _connect():
+    #         exec_cluster(
+    #             config,
+    #             override_cluster_name=cluster_name,
+    #             port_forward=port_forward,
+    #             no_config_cache=False)
+    #     import multiprocessing
+    #     port_process = multiprocessing.Process(target=_connect)
+    #     port_process.start()
+    #
+    #     #head_ip = get_head_node_ip(config, cluster_name)
+    #     dashboard_url = f"http://localhost:18265"
+    #     time.sleep(5)
+
+    next_command = live(dashboard_url)
+
+    if port_process:
+        port_process.kill()
+
     print(next_command)
     if next_command and isinstance(next_command, dict) and config:
         if next_command.get("command") == "attach":
             attach_cluster(
                 config,
                 start=False,
-                screen=False,
-                tmux=False,
+                use_screen=False,
+                use_tmux=False,
                 override_cluster_name=cluster_name,
                 node_ip=next_command.get("node_ip"),
                 no_config_cache=False,

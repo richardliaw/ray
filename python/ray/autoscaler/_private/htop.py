@@ -940,7 +940,7 @@ class MemoryTable(TUIPart):
 
 
 class DataManager:
-    def __init__(self, url: str, client_hostport: Optional[str] = None):
+    def __init__(self, url: str):
         self.url = url
 
         mock = os.environ.get("RAY_HTOP_MOCK")
@@ -954,6 +954,15 @@ class DataManager:
                 self.mock_cache["data"]["clients"] *= 2
 
         self.nodes = {}
+
+        self._load_as_last = 0
+        self._load_as_interval = 10
+
+        self._load_memory_last = 0
+        self._load_memory_interval = 5
+
+        self._load_nodes_last = 0
+        self._load_nodes_interval = 2
 
         # Autoscaler info
         mock_a6s = os.environ.get("RAY_HTOP_AS_MOCK")
@@ -985,9 +994,20 @@ class DataManager:
         return logs, errs
 
     def update(self):
-        self._load_nodes()
-        self._load_autoscaler_state()
-        self._load_memory_info()
+        if time.time() > self._load_nodes_last + self._load_nodes_interval:
+            self._load_nodes()
+            self._load_nodes_last = time.time()
+
+        if time.time() > self._load_as_last + self._load_as_interval:
+            self._load_autoscaler_state()
+            self._load_as_last = time.time()
+
+        display = get_display()
+        if (display is None or
+                display.current_page == Page.PAGE_MEMORY_VIEW) and time.time(
+                ) > self._load_memory_last + self._load_memory_interval:
+            self._load_memory_info()
+            self._load_memory_last = time.time()
 
     def _load_nodes(self):
         def _node_id(node_dict):
@@ -1377,14 +1397,28 @@ class DisplayController:
         print("Invalid command called.")
 
 
-def live():
+_display = None
+
+
+def set_display(display: Display):
+    global _display
+    _display = display
+
+
+def get_display() -> Display:
+    global _display
+    return _display
+
+
+def live(dashboard_url: str = "http://localhost:8265"):
     should_stop = threading.Event()
     event_queue = Queue()
 
-    data_manager = DataManager("http://localhost:8265")  # , "localhost:10001")
+    data_manager = DataManager(dashboard_url)  # , "localhost:10001")
 
     console = Console(theme=main_theme)
     display = Display(data_manager, console, event_queue)
+    set_display(display)
 
     controller = DisplayController(display, should_stop, event_queue)
     controller.listen()

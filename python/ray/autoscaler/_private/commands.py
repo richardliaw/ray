@@ -843,12 +843,12 @@ def _list_all_node_ips(provider):
     head = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
     nodes = head + workers
     try:
-        return {provider.external_ip(n): n for n in nodes}
+        return {provider.internal_ip(n): n for n in nodes}
     except Exception as exc:
         cli_logger.warning(str(exc))
         cli_logger.warning("Trying to list internal IPs")
 
-    return {provider.internal_ip(n): n for n in nodes}
+    return {provider.external_ip(n): n for n in nodes}
 
 
 def exec_cluster(
@@ -894,6 +894,7 @@ def exec_cluster(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     if node_ip:
         node_ip_map = _list_all_node_ips(provider)
+        print(node_ip_map)
         if node_ip in node_ip_map:
             node = node_ip_map[node_ip]
         else:
