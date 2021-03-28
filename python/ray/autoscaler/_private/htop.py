@@ -670,7 +670,7 @@ class NodeTableContainer:
             table.add_row(
                 *node_cols,
                 style="highlight" if table.row_count == self.highlight else "",
-                end_section=not node.expanded)
+                end_section=not node.expanded or len(node.workers) == 0)
 
             if node.expanded:
                 workers_rows = list(node.worker_rows(extra=self.sort_by))
