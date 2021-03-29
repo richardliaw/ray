@@ -894,7 +894,6 @@ def exec_cluster(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
     if node_ip:
         node_ip_map = _list_all_node_ips(provider)
-        print(node_ip_map)
         if node_ip in node_ip_map:
             node = node_ip_map[node_ip]
         else:

@@ -1601,42 +1601,38 @@ def cluster_dump(cluster_config_file: Optional[str] = None,
     required=False,
     type=str,
     help="Override the configured cluster name.")
-def htop(config, cluster_name):
+@add_click_options(logging_options)
+def htop(config, cluster_name, log_style, log_color, verbose):
     # TODO: auto-detect cluster + create port with cluster config
     dashboard_url = f"http://localhost:8265"
-
+    cli_logger.configure(log_style, log_color, verbose)
     port_process = None
-    # if config:
+    if config:
     #     port = 8265
     #     remote_port = 18265
     #     port_forward = [
     #         (port, remote_port),
     #     ]
-    #     click.echo("Attempting to establish dashboard locally at"
-    #                " localhost:{} connected to"
-    #                " remote port {}".format(port, remote_port))
-    #     # We want to probe with a no-op that returns quickly to avoid
-    #     # exceptions caused by network errors.
-    #     def _connect():
-    #         exec_cluster(
-    #             config,
-    #             override_cluster_name=cluster_name,
-    #             port_forward=port_forward,
-    #             no_config_cache=False)
-    #     import multiprocessing
-    #     port_process = multiprocessing.Process(target=_connect)
-    #     port_process.start()
-    #
-    #     #head_ip = get_head_node_ip(config, cluster_name)
-    #     dashboard_url = f"http://localhost:18265"
-    #     time.sleep(5)
-
-    next_command = live(dashboard_url)
-
-    if port_process:
-        port_process.kill()
-
-    print(next_command)
+        config_dict = yaml.safe_load(open(config).read())
+        try:
+            import sshtunnel
+        except ImportError:
+            cli_logger.error("pip install sshtunnel")
+        cli_logger.print("Getting head node IP.")
+        head_ip = get_head_node_ip(config, cluster_name)
+        with cli_logger.group("Tunneling to enable TUI to access dashboard endpoints"):
+            with sshtunnel.open_tunnel(
+                head_ip,
+                ssh_username=config_dict["auth"]["ssh_user"],
+                ssh_pkey=config_dict["auth"]["ssh_private_key"],
+                remote_bind_address=("localhost", 8265),
+                local_bind_address=("", 8265)
+            ):
+                next_command = live(dashboard_url)
+    else:
+        next_command = live(dashboard_url)
+    if next_command:
+        cli_logger.print(f"Got %s as a result of input.", str(next_command))
     if next_command and isinstance(next_command, dict) and config:
         if next_command.get("command") == "attach":
             attach_cluster(
