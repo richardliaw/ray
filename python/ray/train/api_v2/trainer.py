@@ -35,9 +35,3 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 
     def fit(self, dataset: ray.data.Dataset, preprocessor: Preprocessor):
         raise NotImplementedError
-
-
-class Result:
-    def __init__(self, metrics: Dict[str, Any], checkpoint: Any):
-        self.metrics = metrics
-        self.checkpoint = checkpoint

@@ -111,6 +111,9 @@ class ObjectStoreCheckpoint(Checkpoint):
             pickle.dump(data, fp)
         return self._to_local_storage(path)
 
+    def __repr__(self):
+        return f"<ObjectStoreCheckpoint obj_ref={self.obj_ref}>"
+
 
 class LocalStorageCheckpoint(Checkpoint):
     def __init__(self, path: str):
@@ -128,17 +131,21 @@ class LocalStorageCheckpoint(Checkpoint):
                 data = ArtifactFile(fp.read())
         return self._to_object_store(obj_ref=ray.put(data))
 
+    def __repr__(self):
+        return f"<LocalStorageCheckpoint path={self.path}>"
+
 
 class TrainCheckpoint(Checkpoint, Artifact, abc.ABC):
-    def __init__(self, metric: float):
+    def __init__(self, metric: float, model: str):
         self.metric = metric
         self.creation_time = time.time()
         self.creation_node = ray.util.get_node_ip_address()
+        self.model = model
 
 
 class TrainLocalStorageCheckpoint(TrainCheckpoint, LocalStorageCheckpoint):
     def __init__(self, path: str, metric: float, model: str):
-        TrainCheckpoint.__init__(self, metric)
+        TrainCheckpoint.__init__(self, metric, model)
         LocalStorageCheckpoint.__init__(self, path)
 
     def _to_object_store(self, obj_ref: ray.ObjectRef):
@@ -148,7 +155,7 @@ class TrainLocalStorageCheckpoint(TrainCheckpoint, LocalStorageCheckpoint):
 
 class TrainObjectStoreCheckpoint(TrainCheckpoint, ObjectStoreCheckpoint):
     def __init__(self, obj_ref: ray.ObjectRef, metric: float, model: str):
-        TrainCheckpoint.__init__(self, metric)
+        TrainCheckpoint.__init__(self, metric, model)
         ObjectStoreCheckpoint.__init__(self, obj_ref)
 
     def _to_local_storage(self, path: str) -> "TrainLocalStorageCheckpoint":

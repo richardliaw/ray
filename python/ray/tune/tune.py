@@ -39,6 +39,7 @@ from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.train.api_v2.trainer import ConvertibleToTrainable, Trainer
+from ray.train.api_v2.result import Result, ResultGrid
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -101,7 +102,13 @@ class Tuner:
                 **param_space
             },
         )
-        return analysis
+
+        results = [
+            Result(t.trial_id, t.last_result, t.checkpoint.value)
+            for t in analysis.trials
+        ]
+
+        return ResultGrid(results)
 
 
 @PublicAPI

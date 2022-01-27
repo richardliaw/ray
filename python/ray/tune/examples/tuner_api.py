@@ -4,16 +4,17 @@ from typing import Type, Optional
 
 import xgboost_ray
 from ray import tune
+from ray.train.api_v2.result import Result
 from ray.tune.tune import Tuner
 from ray.tune.function_runner import wrap_function
-from xgboost_ray.tune import TuneReportCheckpointCallback, \
-    _TuneCheckpointCallback, _get_tune_resources
+from xgboost_ray.tune import (TuneReportCheckpointCallback,
+                              _TuneCheckpointCallback, _get_tune_resources)
 
 import ray.data
 from ray.train.api_v2.checkpoint import Checkpoint
 from ray.train.api_v2.preprocessor import (Preprocessor, Scaler, Chain,
                                            Repartitioner)
-from ray.train.api_v2.trainer import Result, Trainer, ScalingConfig, RunConfig
+from ray.train.api_v2.trainer import Trainer, ScalingConfig, RunConfig
 from ray.tune.trainable import Trainable
 from sklearn.datasets import load_breast_cancer
 
@@ -56,8 +57,8 @@ class SimpleRayXGBoostTrainer(Trainer):
                 "ray_params": self.ray_params,
                 **self.params
             })
-        result = tuner.fit()
-        return result.trials[0]
+        result_grid = tuner.fit()
+        return result_grid.results[0]
 
     def as_trainable(self) -> Type["Trainable"]:
         self_run_config = copy.deepcopy(self.run_config)
@@ -66,6 +67,8 @@ class SimpleRayXGBoostTrainer(Trainer):
         self_label = self.label
         self_xgboost_kwargs = copy.deepcopy(self.xgboost_kwargs)
 
+        # Using a function trainable here as XGBoost-Ray's integrations
+        # (e.g. callbacks) are optimized for this case
         def SimpleRayXGBoostTrainable(config):
             override_run_config = config.pop("run_config", None)
             override_scaling_config = config.pop("scaling_config", None)
@@ -135,6 +138,8 @@ class SimpleRayXGBoostTrainer(Trainer):
 
         trainable = wrap_function(SimpleRayXGBoostTrainable)
 
+        # Monkey patching the resource requests for dynamic resource
+        # allocation
         def resource_request(config):
             config = copy.deepcopy(config)
 
@@ -242,7 +247,11 @@ def test_xgboost_tuner():
         param_space=param_space)
 
     results = tuner.fit()
-    print(results.dataframe())
+    print(results.results)
+
+    best_result = results.results[0]
+    best_checkpoint = best_result.checkpoint
+    print(best_result.metrics, best_checkpoint)
 
 
 test_xgboost_tuner()
