@@ -461,6 +461,10 @@ class Trainable:
         `self.remote_checkpoint_dir` in this case, is something like,
         `REMOTE_CHECKPOINT_BUCKET/exp/MyTrainable_abc`
         """
+        # Local import to avoid circular dependencies during prototyping
+        from ray.train.api_v2.checkpoint import Checkpoint, \
+            ObjectStoreCheckpoint
+
         if self.uses_cloud_checkpointing:
             rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
                 self.logdir, checkpoint_path)
@@ -470,8 +474,21 @@ class Trainable:
             self.storage_client.wait()
 
         # Ensure TrialCheckpoints are converted
+        cleanup = None
         if isinstance(checkpoint_path, TrialCheckpoint):
             checkpoint_path = checkpoint_path.local_path
+        elif isinstance(checkpoint_path, Checkpoint):
+            if isinstance(checkpoint_path, ObjectStoreCheckpoint):
+                # Todo: Clean up
+                tmpdir = TrainableUtil.make_checkpoint_dir(
+                    self.logdir,
+                    index="tmp" + uuid.uuid4().hex[:6],
+                    override=True)
+                open(os.path.join(tmpdir, ".temp_marker"), "a").close()
+
+                local_storage = checkpoint_path.to_local_storage(tmpdir)
+                checkpoint_path = local_storage.path
+                cleanup = checkpoint_path
 
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
@@ -501,6 +518,9 @@ class Trainable:
             "_episodes_total": self._episodes_total,
         }
         logger.info("Current state after restoring: %s", state)
+
+        if cleanup:
+            shutil.rmtree(cleanup, ignore_errors=True)
 
     def restore_from_object(self, obj):
         """Restores training state from a checkpoint object.

@@ -47,6 +47,9 @@ class Scaler(Preprocessor):
 
         return dataset.map_batches(_scale, batch_format="pandas")
 
+    def __repr__(self):
+        return f"<Scaler columns={self.columns} stats={self.stats}>"
+
 
 class Repartitioner(Preprocessor):
     def __init__(self, num_partitions: int):
@@ -57,6 +60,9 @@ class Repartitioner(Preprocessor):
 
     def transform(self, dataset: ray.data.Dataset) -> ray.data.Dataset:
         return dataset.repartition(num_blocks=self.num_partitions)
+
+    def __repr__(self):
+        return f"<Repartitioner num_partitions={self.num_partitions}>"
 
 
 class Chain(Preprocessor):
@@ -72,6 +78,11 @@ class Chain(Preprocessor):
         for preprocessor in self.preprocessors:
             dataset = preprocessor.transform(dataset)
         return dataset
+
+    def __repr__(self):
+        return (f"<Chain preprocessors=["
+                f"{', '.join(str(p) for p in self.preprocessors)}"
+                f"]>")
 
 
 def test_transform_scaler():

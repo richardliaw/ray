@@ -1,3 +1,4 @@
+import copy
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
     Union
 
@@ -37,7 +38,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.train.api_v2.trainer import ConvertibleToTrainable
+from ray.train.api_v2.trainer import ConvertibleToTrainable, Trainer
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -73,12 +74,34 @@ def _report_progress(runner, reporter, done=False):
 
 class Tuner:
     def __init__(self, trainable: Union[str, Callable, Type[Trainable], Type[
-            ConvertibleToTrainable]], run_config: Dict[str, Any]):
+            ConvertibleToTrainable]], run_config: Dict[str, Any],
+                 param_space: Dict[str, Any]):
         self.trainable = trainable
         self.run_config = run_config
+        self.param_space = param_space
 
-    def fit(self, **datasets):
-        pass
+    def fit(self, datasets: Optional[Dict[str, ray.data.Dataset]] = None):
+        param_space = copy.deepcopy(self.param_space)
+        if datasets:
+            param_space.update({"datasets": datasets})
+
+        if issubclass(self.trainable, Trainer):
+            obj = self.trainable(run_config=self.run_config, scaling_config={})
+            trainable = obj.as_trainable()
+        elif isinstance(self.trainable, ConvertibleToTrainable):
+            trainable = self.trainable.as_trainable()
+        else:
+            trainable = self.trainable
+
+        # For initial prototyping call tune.run() here
+        analysis = run(
+            trainable,
+            config={
+                "run_config": self.run_config,
+                **param_space
+            },
+        )
+        return analysis
 
 
 @PublicAPI

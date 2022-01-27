@@ -475,6 +475,11 @@ class SyncerCallback(Callback):
         if checkpoint.storage == InternalTuneCheckpoint.MEMORY:
             return
 
+        # Todo: Probably shouldn't skip this. Also, clean up.
+        from ray.train.api_v2.checkpoint import Checkpoint
+        if isinstance(checkpoint.value, Checkpoint):
+            return
+
         trial_syncer = self._get_trial_syncer(trial)
         # If the sync_function is False, syncing to driver is disabled.
         # In every other case (valid values include None, True Callable,
