@@ -4,7 +4,7 @@ import pickle
 import tarfile
 import tempfile
 import time
-from typing import Union, Any, Optional, Tuple
+from typing import Any
 
 import ray
 from ray.train.api_v2.preprocessor import Preprocessor
@@ -58,116 +58,31 @@ class ObjectStoreArtifact(Artifact):
     def __init__(self, obj_ref: ray.ObjectRef):
         self.obj_ref = obj_ref
 
+    def _to_local_storage(self, path: str) -> "LocalStorageArtifact":
+        return LocalStorageArtifact(path=path)
+
     def to_local_storage(self, path: str) -> "LocalStorageArtifact":
         data = ray.get(self.obj_ref)
         with open(path, "wb") as fp:
             pickle.dump(data, fp)
-        return LocalStorageArtifact(path=path)
+        return self._to_local_storage(path)
 
 
 class LocalStorageArtifact(Artifact):
     def __init__(self, path: str):
         self.path = path
 
-    def to_object_store(self):
+    def _to_object_store(self,
+                         obj_ref: ray.ObjectRef) -> "ObjectStoreArtifact":
+        return ObjectStoreArtifact(obj_ref=obj_ref)
+
+    def to_object_store(self) -> "ObjectStoreArtifact":
         if os.path.isdir(self.path):
             data = ArtifactDirectory(_pack(self.path))
         else:
             with open(self.path, "r") as fp:
                 data = ArtifactFile(fp.read())
-
-
-class MemoryArtifact(Artifact):
-    def __init__(self, data: Union[ray.ObjectRef, Any]):
-        self._future = None
-        self.data = None
-
-        if isinstance(data, ray.ObjectRef):
-            self._future = data
-        else:
-            self.data = data
-
-    @property
-    def ready(self):
-        return self._future is None
-
-    def wait(self):
-        if self.ready:
-            return
-        self.data = ray.get(self._future)
-
-    def save(self, path: Optional[str] = None):
-        pass
-
-    def delete(self) -> None:
-        """Delete artifact data."""
-        self._future = None
-        self.data = None
-
-    def to_local_storage(self, path: str) -> "LocalStorageArtifact":
-        self.save(path=path)
-        return LocalStorageArtifact(path=path)
-
-
-class LocalStorageArtifact(Artifact):
-    def __init__(self, path: Union[str, Tuple[str], ray.ObjectRef]):
-        self._future = None
-        self.local_path = None
-        self.cloud_path = None
-        self.creation_node_ip = ray.util.get_node_ip_address()
-
-        if isinstance(path, ray.ObjectRef):
-            self._future = path
-        else:
-            self._parse_path(path)
-
-    def _parse_path(self, path: Union[str, Tuple[str]]):
-        if isinstance(path, str):
-            path = (path, )
-
-        for p in path:
-            if is_cloud_target(p):
-                self.cloud_path = p
-            else:
-                self.local_path = p
-
-    @property
-    def ready(self):
-        return self._future is None
-
-    def wait(self):
-        if self.ready:
-            return
-        path = ray.get(self._future)
-        self._parse_path(path=path)
-
-    def download(self,
-                 cloud_path: Optional[str] = None,
-                 local_path: Optional[str] = None,
-                 overwrite: bool = False) -> str:
-        """Download artifact from cloud to local storage."""
-        pass
-
-    def upload(self,
-               cloud_path: Optional[str] = None,
-               local_path: Optional[str] = None,
-               clean_before: bool = False):
-        """Upload artifact from local storage to cloud."""
-        pass
-
-    def save(self, path: Optional[str] = None, force_download: bool = False):
-        pass
-
-    def delete(self) -> None:
-        """Delete artifact from local path, cloud path, and creation node."""
-        pass
-
-    def to_memory(self) -> "MemoryArtifact":
-        pass
-
-
-class ObjectStoreArtifact(Artifact):
-    pass
+        return self._to_object_store(ray.put(data))
 
 
 class Checkpoint(abc.ABC):
@@ -184,29 +99,58 @@ class Checkpoint(abc.ABC):
 
 
 class ObjectStoreCheckpoint(Checkpoint):
-    pass
+    def __init__(self, obj_ref: ray.ObjectRef):
+        self.obj_ref = obj_ref
+
+    def _to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
+        return LocalStorageCheckpoint(path=path)
+
+    def to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
+        data = ray.get(self.obj_ref)
+        with open(path, "wb") as fp:
+            pickle.dump(data, fp)
+        return self._to_local_storage(path)
 
 
-class TuneCheckpoint(Checkpoint, Artifact, abc.ABC):
+class LocalStorageCheckpoint(Checkpoint):
+    def __init__(self, path: str):
+        self.path = path
+
+    def _to_object_store(self,
+                         obj_ref: ray.ObjectRef) -> "ObjectStoreCheckpoint":
+        return ObjectStoreCheckpoint(obj_ref=obj_ref)
+
+    def to_object_store(self) -> "ObjectStoreCheckpoint":
+        if os.path.isdir(self.path):
+            data = ArtifactDirectory(_pack(self.path))
+        else:
+            with open(self.path, "r") as fp:
+                data = ArtifactFile(fp.read())
+        return self._to_object_store(obj_ref=ray.put(data))
+
+
+class TrainCheckpoint(Checkpoint, Artifact, abc.ABC):
     def __init__(self, metric: float):
         self.metric = metric
         self.creation_time = time.time()
+        self.creation_node = ray.util.get_node_ip_address()
 
 
-class MemoryCheckpoint(MemoryArtifact, TuneCheckpoint):
-    def __init__(self, data: Union[ray.ObjectRef, Any], metric: float):
-        MemoryArtifact.__init__(self, data=data)
-        TuneCheckpoint.__init__(self, metric=metric)
+class TrainLocalStorageCheckpoint(TrainCheckpoint, LocalStorageCheckpoint):
+    def __init__(self, path: str, metric: float, model: str):
+        TrainCheckpoint.__init__(self, metric)
+        LocalStorageCheckpoint.__init__(self, path)
 
-    def as_persisted(self) -> "PersistedCheckpoint":
-        return self
+    def _to_object_store(self, obj_ref: ray.ObjectRef):
+        return TrainObjectStoreCheckpoint(
+            obj_ref=obj_ref, metric=self.metric, model=self.model)
 
 
-class PersistedCheckpoint(PersistedArtifact, TuneCheckpoint):
-    def __init__(self, path: Union[str, Tuple[str], ray.ObjectRef],
-                 metric: float):
-        PersistedArtifact.__init__(self, path=path)
-        TuneCheckpoint.__init__(self, metric=metric)
+class TrainObjectStoreCheckpoint(TrainCheckpoint, ObjectStoreCheckpoint):
+    def __init__(self, obj_ref: ray.ObjectRef, metric: float, model: str):
+        TrainCheckpoint.__init__(self, metric)
+        ObjectStoreCheckpoint.__init__(self, obj_ref)
 
-    def as_persisted(self) -> "PersistedCheckpoint":
-        return self
+    def _to_local_storage(self, path: str) -> "TrainLocalStorageCheckpoint":
+        return TrainLocalStorageCheckpoint(
+            path=path, metric=self.metric, model=self.model)

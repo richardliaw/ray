@@ -14,7 +14,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import _global_registry, TRAINABLE_CLASS
 from ray.tune.result import PID, TRAINING_ITERATION, TRIAL_ID
 from ray.tune.suggest import BasicVariantGenerator
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, InternalTuneCheckpoint
 from ray.tune.resources import Resources
 from ray.cluster_utils import Cluster
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -106,7 +106,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
-        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(
+            trial, InternalTuneCheckpoint.PERSISTENT)
         self.assertEqual(checkpoint, trial.saving_to)
         self.assertEqual(trial.checkpoint.value, None)
         self.process_trial_save(trial)
@@ -119,7 +120,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
-        self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        self.trial_executor.save(trial, InternalTuneCheckpoint.PERSISTENT)
         self.process_trial_save(trial)
         self.trial_executor.restore(trial)
         self.trial_executor.stop_trial(trial)
@@ -143,9 +144,10 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
         # Save
-        checkpoint = self.trial_executor.save(trial, Checkpoint.PERSISTENT)
+        checkpoint = self.trial_executor.save(
+            trial, InternalTuneCheckpoint.PERSISTENT)
         self.assertEqual(Trial.RUNNING, trial.status)
-        self.assertEqual(checkpoint.storage, Checkpoint.PERSISTENT)
+        self.assertEqual(checkpoint.storage, InternalTuneCheckpoint.PERSISTENT)
         # Process save result (simulates trial runner)
         self.process_trial_save(trial)
         # Train
@@ -154,7 +156,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         # Pause
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.assertEqual(trial.checkpoint.storage, Checkpoint.MEMORY)
+        self.assertEqual(trial.checkpoint.storage,
+                         InternalTuneCheckpoint.MEMORY)
         # Resume
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)

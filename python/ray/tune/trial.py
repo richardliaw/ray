@@ -15,7 +15,7 @@ import ray
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
+from ray.tune.checkpoint_manager import InternalTuneCheckpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
@@ -91,12 +91,12 @@ class CheckpointDeleter:
         """Requests checkpoint deletion asynchronously.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint to delete.
+            checkpoint (InternalTuneCheckpoint): Checkpoint to delete.
         """
         if not self.runner:
             return
 
-        if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
+        if checkpoint.storage == InternalTuneCheckpoint.PERSISTENT and checkpoint.value:
             checkpoint_path = checkpoint.value
 
             logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
@@ -435,7 +435,8 @@ class Trial:
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
         if checkpoint.value is None:
-            checkpoint = Checkpoint(Checkpoint.PERSISTENT, self.restore_path)
+            checkpoint = InternalTuneCheckpoint(
+                InternalTuneCheckpoint.PERSISTENT, self.restore_path)
         return checkpoint
 
     @classmethod
@@ -609,7 +610,7 @@ class Trial:
         """Hook for handling checkpoints taken by the Trainable.
 
         Args:
-            checkpoint (Checkpoint): Checkpoint taken.
+            checkpoint (InternalTuneCheckpoint): Checkpoint taken.
         """
         self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()

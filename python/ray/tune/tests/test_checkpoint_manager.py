@@ -7,7 +7,8 @@ import unittest
 from unittest.mock import patch
 
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager, logger
+from ray.tune.checkpoint_manager import (InternalTuneCheckpoint,
+                                         CheckpointManager, logger)
 
 
 class CheckpointManagerTest(unittest.TestCase):
@@ -21,11 +22,11 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testNewestCheckpoint(self):
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
-        memory_checkpoint = Checkpoint(Checkpoint.MEMORY, {0},
-                                       self.mock_result(0))
+        memory_checkpoint = InternalTuneCheckpoint(
+            InternalTuneCheckpoint.MEMORY, {0}, self.mock_result(0))
         checkpoint_manager.on_checkpoint(memory_checkpoint)
-        persistent_checkpoint = Checkpoint(Checkpoint.PERSISTENT, {1},
-                                           self.mock_result(1))
+        persistent_checkpoint = InternalTuneCheckpoint(
+            InternalTuneCheckpoint.PERSISTENT, {1}, self.mock_result(1))
         checkpoint_manager.on_checkpoint(persistent_checkpoint)
         self.assertEqual(checkpoint_manager.newest_persistent_checkpoint,
                          persistent_checkpoint)
@@ -38,8 +39,8 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
-            for i in range(3)
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT, {i},
+                                   self.mock_result(i)) for i in range(3)
         ]
 
         with patch.object(checkpoint_manager, "delete") as delete_mock:
@@ -64,7 +65,8 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 2
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, {i}, self.mock_result(i))
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT, {i},
+                                   self.mock_result(i))
             for i in range(3, -1, -1)
         ]
 
@@ -89,8 +91,8 @@ class CheckpointManagerTest(unittest.TestCase):
         keep_checkpoints_num = 4
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num)
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, i, self.mock_result(i))
-            for i in range(16)
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT, i,
+                                   self.mock_result(i)) for i in range(16)
         ]
         random.shuffle(checkpoints)
 
@@ -109,7 +111,8 @@ class CheckpointManagerTest(unittest.TestCase):
         """
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
 
-        no_attr_checkpoint = Checkpoint(Checkpoint.PERSISTENT, 0, {})
+        no_attr_checkpoint = InternalTuneCheckpoint(
+            InternalTuneCheckpoint.PERSISTENT, 0, {})
         with patch.object(logger, "error") as log_error_mock:
             checkpoint_manager.on_checkpoint(no_attr_checkpoint)
             log_error_mock.assert_called_once()
@@ -119,8 +122,10 @@ class CheckpointManagerTest(unittest.TestCase):
 
     def testOnMemoryCheckpoint(self):
         checkpoints = [
-            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0)),
-            Checkpoint(Checkpoint.MEMORY, 0, self.mock_result(0))
+            InternalTuneCheckpoint(InternalTuneCheckpoint.MEMORY, 0,
+                                   self.mock_result(0)),
+            InternalTuneCheckpoint(InternalTuneCheckpoint.MEMORY, 0,
+                                   self.mock_result(0))
         ]
         checkpoint_manager = self.checkpoint_manager(keep_checkpoints_num=1)
         checkpoint_manager.on_checkpoint(checkpoints[0])
@@ -142,14 +147,14 @@ class CheckpointManagerTest(unittest.TestCase):
             tmpfiles.append(tmpfile)
 
         checkpoints = [
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[0],
-                       self.mock_result(5)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
-                       self.mock_result(10)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[2],
-                       self.mock_result(0)),
-            Checkpoint(Checkpoint.PERSISTENT, tmpfiles[1],
-                       self.mock_result(20))
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT,
+                                   tmpfiles[0], self.mock_result(5)),
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT,
+                                   tmpfiles[1], self.mock_result(10)),
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT,
+                                   tmpfiles[2], self.mock_result(0)),
+            InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT,
+                                   tmpfiles[1], self.mock_result(20))
         ]
         for checkpoint in checkpoints:
             checkpoint_manager.on_checkpoint(checkpoint)

@@ -10,8 +10,9 @@ import uuid
 from functools import partial
 from numbers import Number
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
+from ray.train.api_v2.checkpoint import LocalStorageCheckpoint, Checkpoint
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -136,6 +137,7 @@ class StatusReporter:
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
+        self._last_model_file = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
 
@@ -148,6 +150,7 @@ class StatusReporter:
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
+        self._last_model_file = None
         self._fresh_checkpoint = False
         self._trial_resources = trial_resources
 
@@ -201,7 +204,10 @@ class StatusReporter:
         logger.debug("Making checkpoint dir at %s", checkpoint_dir)
         return checkpoint_dir
 
-    def set_checkpoint(self, checkpoint, is_new=True):
+    def set_checkpoint(self,
+                       checkpoint,
+                       is_new=True,
+                       model_file: Optional[str] = None):
         """Sets the checkpoint to be returned upon get_checkpoint.
 
         If this is a "new" checkpoint, it will notify Tune
@@ -215,8 +221,15 @@ class StatusReporter:
                              "make_checkpoint_dir.")
                 raise
         self._last_checkpoint = checkpoint
+
         if is_new:
             self._fresh_checkpoint = True
+
+        if model_file:
+            self._last_model_file = model_file
+
+    def set_model_file(self, model_file: Optional[str]):
+        self._last_model_file = model_file
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -411,7 +424,7 @@ class FunctionRunner(Trainable):
     def execute(self, fn):
         return fn(self)
 
-    def save(self, checkpoint_path=None) -> str:
+    def save(self, checkpoint_path=None) -> Union[str, Checkpoint]:
         if checkpoint_path:
             raise ValueError(
                 "Checkpoint path should not be used with function API.")
@@ -451,7 +464,9 @@ class FunctionRunner(Trainable):
 
         self._maybe_save_to_cloud(parent_dir)
 
-        return checkpoint_path
+        local_checkpoint = LocalStorageCheckpoint(checkpoint_path)
+
+        return local_checkpoint.to_object_store()
 
     def save_to_object(self):
         checkpoint_path = self.save()

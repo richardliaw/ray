@@ -32,11 +32,12 @@ from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
 from ray.tune.syncer import (SyncConfig, set_sync_periods, wait_for_sync)
-from ray.tune.trainable import Trainable, ConvertibleToTrainable
+from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
+from ray.train.api_v2.trainer import ConvertibleToTrainable
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler

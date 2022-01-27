@@ -3,6 +3,7 @@ import inspect
 import os
 import logging
 import traceback
+from typing import Optional
 
 from ray.util.debug import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
@@ -124,7 +125,7 @@ def save_checkpoint(checkpoint):
 
 @PublicAPI
 @contextmanager
-def checkpoint_dir(step):
+def checkpoint_dir(step: int, model_file: Optional[str] = None):
     """Returns a checkpoint dir inside a context.
 
     Store any files related to restoring state within the
@@ -141,6 +142,7 @@ def checkpoint_dir(step):
     Args:
         step (int): Index for the checkpoint. Expected to be a
             monotonically increasing quantity.
+        model_file (str): Name of model file.
 
     .. code-block:: python
 
@@ -179,6 +181,8 @@ def checkpoint_dir(step):
 
     if _session:
         _checkpoint_dir = _session.make_checkpoint_dir(step=step)
+        # Reset before yield
+        _session.set_model_file(None)
     else:
         _checkpoint_dir = os.path.abspath("./")
 
@@ -186,6 +190,16 @@ def checkpoint_dir(step):
 
     if _session:
         _session.set_checkpoint(_checkpoint_dir)
+
+        if model_file:
+            _session.set_model_file(model_file)
+
+
+@PublicAPI(stability="beta")
+def set_model_file(model_file: str):
+    _session = get_session()
+    if _session:
+        _session.set_model_file(model_file)
 
 
 @DeveloperAPI

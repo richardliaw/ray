@@ -24,7 +24,7 @@ from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
 from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
-from ray.tune.trial import Checkpoint, Trial
+from ray.tune.trial import InternalTuneCheckpoint, Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.utils.placement_groups import PlacementGroupFactory
@@ -1061,7 +1061,7 @@ class TrialRunner:
                     trial=trial,
                     checkpoint=trial.saving_to)
                 trial.on_checkpoint(trial.saving_to)
-                if trial.checkpoint.storage != Checkpoint.MEMORY:
+                if trial.checkpoint.storage != InternalTuneCheckpoint.MEMORY:
                     self.trial_executor.mark_trial_to_checkpoint(trial)
             except Exception:
                 logger.exception("Trial %s: Error handling checkpoint %s",
@@ -1155,7 +1155,8 @@ class TrialRunner:
         if trial.should_checkpoint() or force:
             # Save trial runtime if possible.
             if trial.runner:
-                self.trial_executor.save(trial, storage=Checkpoint.PERSISTENT)
+                self.trial_executor.save(
+                    trial, storage=InternalTuneCheckpoint.PERSISTENT)
 
     def _try_recover(self, trial, error_msg):
         """Tries to recover trial.

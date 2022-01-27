@@ -29,7 +29,7 @@ from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupManager, \
     get_tune_pg_prefix
 from ray.tune.utils.trainable import TrainableUtil
-from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
+from ray.tune.trial import Trial, InternalTuneCheckpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
@@ -793,8 +793,8 @@ class RayTrialExecutor(TrialExecutor):
 
     def save(self,
              trial,
-             storage=Checkpoint.PERSISTENT,
-             result: Optional[Dict] = None) -> Checkpoint:
+             storage=InternalTuneCheckpoint.PERSISTENT,
+             result: Optional[Dict] = None) -> InternalTuneCheckpoint:
         """Saves the trial's state to a checkpoint asynchronously.
 
         Args:
@@ -809,13 +809,13 @@ class RayTrialExecutor(TrialExecutor):
         """
         result = result or trial.last_result
         with self._change_working_directory(trial):
-            if storage == Checkpoint.MEMORY:
+            if storage == InternalTuneCheckpoint.MEMORY:
                 value = trial.runner.save_to_object.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = InternalTuneCheckpoint(storage, value, result)
                 trial.on_checkpoint(checkpoint)
             else:
                 value = trial.runner.save.remote()
-                checkpoint = Checkpoint(storage, value, result)
+                checkpoint = InternalTuneCheckpoint(storage, value, result)
                 trial.saving_to = checkpoint
                 self._running[value] = trial
         return checkpoint
@@ -838,7 +838,7 @@ class RayTrialExecutor(TrialExecutor):
             raise RuntimeError(
                 "Trial {}: Unable to restore - no runner found.".format(trial))
         value = checkpoint.value
-        if checkpoint.storage == Checkpoint.MEMORY:
+        if checkpoint.storage == InternalTuneCheckpoint.MEMORY:
             logger.debug("Trial %s: Attempting restore from object", trial)
             # Note that we don't store the remote since in-memory checkpoints
             # don't guarantee fault tolerance and don't need to be waited on.

@@ -28,8 +28,8 @@ from ray.util.annotations import DeveloperAPI
 
 if TUNE_INSTALLED:
     from ray import tune
-    from ray.tune import Trainable
-    from ray.tune import PlacementGroupFactory
+    from ray.tune.trainable import Trainable
+    from ray.tune.utils.placement_groups import PlacementGroupFactory
     from ray.tune.function_runner import wrap_function
 else:
     tune = PlacementGroupFactory = Trainable = object

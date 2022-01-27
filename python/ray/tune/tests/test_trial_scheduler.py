@@ -23,7 +23,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
 from ray.tune.suggest.suggestion import ConcurrencyLimiter
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, InternalTuneCheckpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
 
@@ -231,8 +231,9 @@ class _MockTrialExecutor(TrialExecutor):
     def restore(self, trial, checkpoint=None, block=False):
         pass
 
-    def save(self, trial, type=Checkpoint.PERSISTENT, result=None):
-        return Checkpoint(Checkpoint.PERSISTENT, trial.trainable_name, result)
+    def save(self, trial, type=InternalTuneCheckpoint.PERSISTENT, result=None):
+        return InternalTuneCheckpoint(InternalTuneCheckpoint.PERSISTENT,
+                                      trial.trainable_name, result)
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
@@ -287,7 +288,7 @@ class _MockTrialRunner():
         return self.trials
 
     def _pause_trial(self, trial):
-        self.trial_executor.save(trial, Checkpoint.MEMORY, None)
+        self.trial_executor.save(trial, InternalTuneCheckpoint.MEMORY, None)
         trial.status = Trial.PAUSED
 
     def _launch_trial(self, trial):
@@ -835,7 +836,8 @@ class _MockTrial(Trial):
 
     @property
     def checkpoint(self):
-        return Checkpoint(Checkpoint.MEMORY, self.trainable_name, None)
+        return InternalTuneCheckpoint(InternalTuneCheckpoint.MEMORY,
+                                      self.trainable_name, None)
 
 
 class PopulationBasedTestingSuite(unittest.TestCase):

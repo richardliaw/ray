@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import ray
 from ray import tune
 from ray.tune import Trainable
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, InternalTuneCheckpoint
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
@@ -432,7 +432,8 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         class MockTrial(Trial):
             @property
             def checkpoint(self):
-                return Checkpoint(Checkpoint.MEMORY, "None", {})
+                return InternalTuneCheckpoint(InternalTuneCheckpoint.MEMORY,
+                                              "None", {})
 
             @property
             def status(self):

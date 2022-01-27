@@ -16,7 +16,7 @@ from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
-from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial import Trial, InternalTuneCheckpoint
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -481,7 +481,9 @@ class PopulationBasedTraining(FIFOScheduler):
                 state.last_checkpoint = trial.checkpoint
             else:
                 state.last_checkpoint = trial_executor.save(
-                    trial, Checkpoint.MEMORY, result=state.last_result)
+                    trial,
+                    InternalTuneCheckpoint.MEMORY,
+                    result=state.last_result)
             self._num_checkpoints += 1
         else:
             state.last_checkpoint = None  # not a top trial
@@ -791,7 +793,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                         step, new_config))
 
         checkpoint = trial_runner.trial_executor.save(
-            trial, Checkpoint.MEMORY, result=result)
+            trial, InternalTuneCheckpoint.MEMORY, result=result)
 
         new_tag = make_experiment_tag(self.experiment_tag, new_config,
                                       new_config)
