@@ -12,7 +12,8 @@ from numbers import Number
 
 from typing import Any, Callable, Optional, Union
 
-from ray.train.api_v2.checkpoint import LocalStorageCheckpoint, Checkpoint
+from ray.train.api_v2.checkpoint import (Checkpoint,
+                                         TrainLocalStorageCheckpoint)
 from six.moves import queue
 
 from ray.util.debug import log_once
@@ -237,6 +238,9 @@ class StatusReporter:
     def get_checkpoint(self):
         self._fresh_checkpoint = False
         return self._last_checkpoint
+
+    def get_model(self):
+        return self._last_model_file
 
     def _start(self):
         self._last_report_time = time.time()
@@ -464,7 +468,8 @@ class FunctionRunner(Trainable):
 
         self._maybe_save_to_cloud(parent_dir)
 
-        local_checkpoint = LocalStorageCheckpoint(checkpoint_path)
+        local_checkpoint = TrainLocalStorageCheckpoint(
+            path=checkpoint_path, metric=0.)  # Todo
 
         return local_checkpoint.to_object_store()
 

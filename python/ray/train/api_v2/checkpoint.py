@@ -136,28 +136,25 @@ class LocalStorageCheckpoint(Checkpoint):
 
 
 class TrainCheckpoint(Checkpoint, Artifact, abc.ABC):
-    def __init__(self, metric: float, model: str):
+    def __init__(self, metric: float):
         self.metric = metric
         self.creation_time = time.time()
         self.creation_node = ray.util.get_node_ip_address()
-        self.model = model
 
 
 class TrainLocalStorageCheckpoint(TrainCheckpoint, LocalStorageCheckpoint):
-    def __init__(self, path: str, metric: float, model: str):
-        TrainCheckpoint.__init__(self, metric, model)
+    def __init__(self, path: str, metric: float):
+        TrainCheckpoint.__init__(self, metric)
         LocalStorageCheckpoint.__init__(self, path)
 
     def _to_object_store(self, obj_ref: ray.ObjectRef):
-        return TrainObjectStoreCheckpoint(
-            obj_ref=obj_ref, metric=self.metric, model=self.model)
+        return TrainObjectStoreCheckpoint(obj_ref=obj_ref, metric=self.metric)
 
 
 class TrainObjectStoreCheckpoint(TrainCheckpoint, ObjectStoreCheckpoint):
-    def __init__(self, obj_ref: ray.ObjectRef, metric: float, model: str):
-        TrainCheckpoint.__init__(self, metric, model)
+    def __init__(self, obj_ref: ray.ObjectRef, metric: float):
+        TrainCheckpoint.__init__(self, metric)
         ObjectStoreCheckpoint.__init__(self, obj_ref)
 
     def _to_local_storage(self, path: str) -> "TrainLocalStorageCheckpoint":
-        return TrainLocalStorageCheckpoint(
-            path=path, metric=self.metric, model=self.model)
+        return TrainLocalStorageCheckpoint(path=path, metric=self.metric)

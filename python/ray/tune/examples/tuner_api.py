@@ -1,5 +1,4 @@
 import copy
-import os
 from typing import Type, Optional
 
 import xgboost_ray
@@ -8,7 +7,7 @@ from ray.train.api_v2.result import Result
 from ray.tune.tune import Tuner
 from ray.tune.function_runner import wrap_function
 from xgboost_ray.tune import (TuneReportCheckpointCallback,
-                              _TuneCheckpointCallback, _get_tune_resources)
+                              _get_tune_resources)
 
 import ray.data
 from ray.train.api_v2.checkpoint import Checkpoint
@@ -94,23 +93,6 @@ class SimpleRayXGBoostTrainer(Trainer):
                 processed, label=label or self_label)
             evals_result = {}
 
-            # This is only needed for the new `model_file` parameter.
-            # Upstream this eventually
-            class _TuneCheckpointModelCallback(_TuneCheckpointCallback):
-                @staticmethod
-                def _create_checkpoint(model, epoch: int, filename: str,
-                                       frequency: int):
-                    if epoch % frequency > 0:
-                        return
-                    with tune.checkpoint_dir(
-                            step=epoch, model_file=filename) as checkpoint_dir:
-                        model.save_model(
-                            os.path.join(checkpoint_dir, filename))
-
-            class TuneReportCheckpointModelCallback(
-                    TuneReportCheckpointCallback):
-                _checkpoint_callback_cls = _TuneCheckpointModelCallback
-
             ray_params = xgboost_ray.RayParams()
             ray_params.__dict__.update(**run_config)
             ray_params.__dict__.update(**scaling_config)
@@ -130,7 +112,7 @@ class SimpleRayXGBoostTrainer(Trainer):
                 evals_result=evals_result,
                 ray_params=ray_params,
                 callbacks=[
-                    TuneReportCheckpointModelCallback(
+                    TuneReportCheckpointCallback(
                         filename="model.xgb", frequency=1)
                 ],
                 *xgboost_args,
@@ -160,6 +142,41 @@ class SimpleRayXGBoostTrainer(Trainer):
 
         trainable.default_resource_request = resource_request
         return trainable
+
+
+# DRAFT: Resource/Model API
+#
+# class TrainableClass(Trainable):
+#     def step(self):
+#         pass
+#
+#     def default_resource_request(cls, config: Dict[str, Any]) -> \
+#             Union[Resources, PlacementGroupFactory]:
+#         pass
+#
+#     def save_checkpoint(self, tmp_checkpoint_dir):
+#         pass
+#
+#     def export_model(self, export_formats, export_dir=None):
+#         pass
+#
+#     def get_model_from_checkpoint(self, checkpoint):
+#         pass
+#
+#
+# def train_fn(config):
+#     pass
+#
+#
+# def resource_fn(config) -> PlacementGroupFactory:
+#     pass
+#
+#
+# def model_fn(checkpoint) -> Model:
+#     pass
+#
+#
+# tune.run(tune.trainable(train_fn, resource_fn, model_fn), )
 
 
 def test_xgboost_trainer():
