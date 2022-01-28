@@ -75,8 +75,8 @@ def _report_progress(runner, reporter, done=False):
 
 class Tuner:
     def __init__(self, trainable: Union[str, Callable, Type[Trainable], Type[
-            ConvertibleToTrainable]], run_config: Dict[str, Any],
-                 param_space: Dict[str, Any]):
+            ConvertibleToTrainable], ConvertibleToTrainable],
+                 run_config: Dict[str, Any], param_space: Dict[str, Any]):
         self.trainable = trainable
         self.run_config = run_config
         self.param_space = param_space
@@ -86,7 +86,8 @@ class Tuner:
         if datasets:
             param_space.update({"datasets": datasets})
 
-        if issubclass(self.trainable, Trainer):
+        if isinstance(self.trainable, Type) and issubclass(
+                self.trainable, Trainer):
             obj = self.trainable(run_config=self.run_config, scaling_config={})
             trainable = obj.as_trainable()
         elif isinstance(self.trainable, ConvertibleToTrainable):
