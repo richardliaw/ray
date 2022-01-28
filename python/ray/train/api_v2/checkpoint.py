@@ -4,7 +4,7 @@ import pickle
 import tarfile
 import tempfile
 import time
-from typing import Any
+from typing import Any, Optional
 
 import ray
 from ray.train.api_v2.preprocessor import Preprocessor
@@ -105,10 +105,19 @@ class ObjectStoreCheckpoint(Checkpoint):
     def _to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
         return LocalStorageCheckpoint(path=path)
 
-    def to_local_storage(self, path: str) -> "LocalStorageCheckpoint":
+    def to_local_storage(
+            self, path: Optional[str] = None) -> "LocalStorageCheckpoint":
+        if path is None:
+            path = tempfile.mktemp()
         data = ray.get(self.obj_ref)
-        with open(path, "wb") as fp:
-            pickle.dump(data, fp)
+        if isinstance(data, ArtifactDirectory):
+            _unpack(data.data, path)
+        elif isinstance(data, ArtifactFile):
+            with open(path, "wb") as fp:
+                pickle.dump(data.data, fp)
+        else:
+            with open(path, "wb") as fp:
+                pickle.dump(data, fp)
         return self._to_local_storage(path)
 
     def __repr__(self):
@@ -136,25 +145,42 @@ class LocalStorageCheckpoint(Checkpoint):
 
 
 class TrainCheckpoint(Checkpoint, Artifact, abc.ABC):
-    def __init__(self, metric: float):
+    def __init__(self,
+                 metric: float,
+                 preprocessor: Optional[Preprocessor] = None):
         self.metric = metric
         self.creation_time = time.time()
         self.creation_node = ray.util.get_node_ip_address()
 
+        self.preprocessor = preprocessor
+
+    def load_preprocessor(self, **options) -> Preprocessor:
+        return self.preprocessor
+
 
 class TrainLocalStorageCheckpoint(TrainCheckpoint, LocalStorageCheckpoint):
-    def __init__(self, path: str, metric: float):
-        TrainCheckpoint.__init__(self, metric)
+    def __init__(self,
+                 path: str,
+                 metric: float,
+                 preprocessor: Optional[Preprocessor] = None):
+        TrainCheckpoint.__init__(self, metric, preprocessor)
         LocalStorageCheckpoint.__init__(self, path)
 
     def _to_object_store(self, obj_ref: ray.ObjectRef):
-        return TrainObjectStoreCheckpoint(obj_ref=obj_ref, metric=self.metric)
+        return TrainObjectStoreCheckpoint(
+            obj_ref=obj_ref,
+            metric=self.metric,
+            preprocessor=self.preprocessor)
 
 
 class TrainObjectStoreCheckpoint(TrainCheckpoint, ObjectStoreCheckpoint):
-    def __init__(self, obj_ref: ray.ObjectRef, metric: float):
-        TrainCheckpoint.__init__(self, metric)
+    def __init__(self,
+                 obj_ref: ray.ObjectRef,
+                 metric: float,
+                 preprocessor: Optional[Preprocessor] = None):
+        TrainCheckpoint.__init__(self, metric, preprocessor)
         ObjectStoreCheckpoint.__init__(self, obj_ref)
 
     def _to_local_storage(self, path: str) -> "TrainLocalStorageCheckpoint":
-        return TrainLocalStorageCheckpoint(path=path, metric=self.metric)
+        return TrainLocalStorageCheckpoint(
+            path=path, metric=self.metric, preprocessor=self.preprocessor)

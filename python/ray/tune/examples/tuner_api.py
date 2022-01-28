@@ -1,17 +1,36 @@
+import os
+import shutil
 from typing import Optional, Dict, Any
 
+import pandas as pd
+import xgboost
 import xgboost_ray
 from ray import tune
+from ray.train.api_v2.model import Model
 from ray.tune.tune import Tuner
 from xgboost_ray.tune import (TuneReportCheckpointCallback,
                               _get_tune_resources)
 
 import ray.data
-from ray.train.api_v2.checkpoint import Checkpoint
+from ray.train.api_v2.checkpoint import (Checkpoint,
+                                         TrainObjectStoreCheckpoint)
 from ray.train.api_v2.preprocessor import (Scaler, Chain, Repartitioner)
 from ray.train.api_v2.trainer import (ScalingConfig, RunConfig,
                                       FunctionTrainer)
 from sklearn.datasets import load_breast_cancer
+
+
+class XGBoostModel(Model):
+    def __init__(self, bst: xgboost.Booster):
+        self.bst = bst
+
+    def predict(self, dataset: ray.data.Dataset) -> ray.data.Dataset:
+        def score_fn(batch):
+            # Use core xgboost (not distributed) for predict
+            matrix = xgboost.DMatrix(batch)
+            return pd.DataFrame(self.bst.predict(matrix))
+
+        return dataset.map_batches(score_fn, batch_format="pandas")
 
 
 class XGBoostTrainer(FunctionTrainer):
@@ -42,10 +61,19 @@ class XGBoostTrainer(FunctionTrainer):
     def resource_fn(self, scaling_config: ScalingConfig):
         return _get_tune_resources(**scaling_config)
 
+    def model_fn(self, checkpoint: TrainObjectStoreCheckpoint,
+                 **options) -> XGBoostModel:
+        local_storage_cp = checkpoint.to_local_storage()
+        bst = xgboost.Booster(
+            model_file=os.path.join(local_storage_cp.path, "model.xgb"))
+        shutil.rmtree(local_storage_cp.path)
+        return XGBoostModel(bst)
+
 
 def test_xgboost_trainer():
     data_raw = load_breast_cancer(as_frame=True)
     dataset_df = data_raw["data"]
+    predict_ds = ray.data.from_pandas(dataset_df)
     dataset_df["target"] = data_raw["target"]
     dataset = ray.data.from_pandas(dataset_df)
 
@@ -70,6 +98,12 @@ def test_xgboost_trainer():
         params=params)
     result = trainer.fit(dataset, preprocessor=preprocessor)
     print(result)
+
+    this_checkpoint = result.checkpoint
+
+    this_model = this_checkpoint.load_model()
+    predicted = this_model.predict(predict_ds)
+    print(predicted.to_pandas())
 
 
 def test_xgboost_tuner():
@@ -135,9 +169,14 @@ def test_xgboost_tuner():
     best_checkpoint = best_result.checkpoint
     print(best_result.metrics, best_checkpoint)
 
+    predict_data = ray.data.from_pandas(data_raw["data"])
+    best_model = best_checkpoint.load_model()
+    predicted = best_model.predict(predict_data)
+    print(predicted.to_pandas())
 
-# test_xgboost_trainer()
-test_xgboost_tuner()
+
+test_xgboost_trainer()
+# test_xgboost_tuner()
 
 #
 # tuner = Tuner(

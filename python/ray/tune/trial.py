@@ -266,10 +266,13 @@ class Trial:
         # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
+        self.postprocess_checkpoint_fn = None
         trainable_cls = self.get_trainable_cls()
         if trainable_cls:
             default_resources = trainable_cls.default_resource_request(
                 self.config)
+            self.postprocess_checkpoint_fn = \
+                trainable_cls.postprocess_checkpoint
 
             # If Trainable returns resources, do not allow manual override via
             # `resources_per_trial` by the user.
@@ -612,6 +615,8 @@ class Trial:
         Args:
             checkpoint (InternalTuneCheckpoint): Checkpoint taken.
         """
+        if self.postprocess_checkpoint_fn:
+            self.postprocess_checkpoint_fn(self.config, checkpoint.value)
         self.checkpoint_manager.on_checkpoint(checkpoint)
         self.invalidate_json_state()
 

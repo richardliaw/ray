@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Optional, Type, Union
 
 import ray
 from ray.data import Dataset
+from ray.train.api_v2.model import Model
 from ray.train.trainer import wrap_function
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import Trainable
@@ -44,13 +45,14 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
 class FunctionTrainer(Trainer, abc.ABC):
     def train_fn(self, run_config: RunConfig, scaling_config: ScalingConfig,
                  datasets: Dict[str, ray.data.Dataset],
-                 checkpoint: Optional[Checkpoint], **kwargs):
+                 checkpoint: Optional[Checkpoint], **kwargs) -> Any:
         raise NotImplementedError
 
-    def resource_fn(self, scaling_config: ScalingConfig):
+    def resource_fn(self,
+                    scaling_config: ScalingConfig) -> PlacementGroupFactory:
         raise NotImplementedError
 
-    def model_fn(self, checkpoint: Checkpoint):
+    def model_fn(self, checkpoint: Checkpoint, **options) -> Model:
         raise NotImplementedError
 
     def fit(self, dataset: ray.data.Dataset, preprocessor: Preprocessor):
@@ -147,14 +149,26 @@ class FunctionTrainer(Trainer, abc.ABC):
             return self.resource_fn(scaling_config)
 
         trainable.default_resource_request = resource_request
+
+        def postprocess_checkpoint(config: Dict[str, Any],
+                                   checkpoint: Checkpoint):
+            checkpoint.preprocessor = config.get("preprocessor", None)
+
+            def _load_model(**options):
+                return self.model_fn(checkpoint, **options)
+
+            checkpoint.load_model = _load_model
+
+        trainable.postprocess_checkpoint = postprocess_checkpoint
+
         return trainable
 
 
 def trainable(train_fn: Callable[[
-        RunConfig, ScalingConfig, Dict[str, Dataset], Dict[str, Any], Optional[
-            Checkpoint]
+        RunConfig, ScalingConfig, Dict[str, ray.data.Dataset], Optional[
+            Checkpoint], Any
 ], Any], resource_fn: Callable[[ScalingConfig], PlacementGroupFactory],
-              model_fn):
+              model_fn: Callable[[Checkpoint], Model]):
     class TuneTrainer(FunctionTrainer):
         def train_fn(self, run_config: RunConfig,
                      scaling_config: ScalingConfig,
@@ -165,5 +179,8 @@ def trainable(train_fn: Callable[[
 
         def resource_fn(self, scaling_config: ScalingConfig):
             return resource_fn(scaling_config)
+
+        def model_fn(self, checkpoint: Checkpoint, **options) -> Model:
+            return model_fn(checkpoint)
 
     return TuneTrainer

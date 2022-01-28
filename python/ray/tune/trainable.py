@@ -179,6 +179,14 @@ class Trainable:
         return None
 
     @classmethod
+    def postprocess_checkpoint(cls, config, checkpoint):
+        return None
+
+    @classmethod
+    def get_model_from_checkpoint(cls, checkpoint):
+        return None
+
+    @classmethod
     def resource_help(cls, config):
         """Returns a help string for configuring this trainable's resources.
 
