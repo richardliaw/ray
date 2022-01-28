@@ -177,8 +177,3 @@ def test_xgboost_tuner():
 
 test_xgboost_trainer()
 # test_xgboost_tuner()
-
-#
-# tuner = Tuner(
-#
-# )
