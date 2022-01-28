@@ -123,6 +123,12 @@ class ObjectStoreCheckpoint(Checkpoint):
     def __repr__(self):
         return f"<ObjectStoreCheckpoint obj_ref={self.obj_ref}>"
 
+    def __getstate__(self):
+        return ray.get(self.obj_ref)
+
+    def __setstate__(self, state):
+        self.obj_ref = ray.put(state)
+
 
 class LocalStorageCheckpoint(Checkpoint):
     def __init__(self, path: str):

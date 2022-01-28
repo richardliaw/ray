@@ -175,5 +175,23 @@ def test_xgboost_tuner():
     print(predicted.to_pandas())
 
 
-test_xgboost_trainer()
+def test_xgboost_resume(path: str):
+    tuner = Tuner.restore(path)
+
+    results = tuner.resume_fit()
+    print(results.results)
+
+    best_result = results.results[0]
+    best_checkpoint = best_result.checkpoint
+    print(best_result.metrics, best_checkpoint)
+
+    data_raw = load_breast_cancer(as_frame=True)
+    predict_data = ray.data.from_pandas(data_raw["data"])
+    best_model = best_checkpoint.load_model()
+    predicted = best_model.predict(predict_data)
+    print(predicted.to_pandas())
+
+
+# test_xgboost_trainer()
 # test_xgboost_tuner()
+test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")

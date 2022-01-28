@@ -1,4 +1,5 @@
 import copy
+import pickle
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
     Union
 
@@ -80,12 +81,9 @@ class Tuner:
         self.trainable = trainable
         self.run_config = run_config
         self.param_space = param_space
+        self.experiment_path = None
 
-    def fit(self, datasets: Optional[Dict[str, ray.data.Dataset]] = None):
-        param_space = copy.deepcopy(self.param_space)
-        if datasets:
-            param_space.update({"datasets": datasets})
-
+    def _get_trainable(self):
         if isinstance(self.trainable, Type) and issubclass(
                 self.trainable, Trainer):
             obj = self.trainable(run_config=self.run_config, scaling_config={})
@@ -94,6 +92,14 @@ class Tuner:
             trainable = self.trainable.as_trainable()
         else:
             trainable = self.trainable
+        return trainable
+
+    def fit(self, datasets: Optional[Dict[str, ray.data.Dataset]] = None):
+        param_space = copy.deepcopy(self.param_space)
+        if datasets:
+            param_space.update({"datasets": datasets})
+
+        trainable = self._get_trainable()
 
         # For initial prototyping call tune.run() here
         analysis = run(
@@ -103,6 +109,11 @@ class Tuner:
                 **param_space
             },
         )
+        self.experiment_path = analysis.experiment_dir
+
+        tuner_ckpt = os.path.join(self.experiment_path, "tuner.pkl")
+        with open(tuner_ckpt, "wb") as fp:
+            pickle.dump(self, fp)
 
         results = [
             Result(t.trial_id, t.last_result, t.checkpoint.value)
@@ -110,6 +121,36 @@ class Tuner:
         ]
 
         return ResultGrid(results)
+
+    def resume_fit(self):
+        assert self.experiment_path
+
+        trainable = self._get_trainable()
+
+        # E.g. /home/ray/ray_results/experiment_name
+        experiment_dir = os.path.dirname(self.experiment_path + os.sep)
+        # E.g. experiment_name
+        experiment_name = os.path.basename(experiment_dir)
+        # E.g. /home/ray/ray_results
+        local_dir = os.path.dirname(experiment_dir)
+
+        analysis = run(
+            trainable, name=experiment_name, local_dir=local_dir, resume=True)
+
+        results = [
+            Result(t.trial_id, t.last_result, t.checkpoint.value)
+            for t in analysis.trials
+        ]
+
+        return ResultGrid(results)
+
+    @classmethod
+    def restore(cls, path: str) -> "Tuner":
+        tuner_ckpt = os.path.join(path, "tuner.pkl")
+        with open(tuner_ckpt, "rb") as fp:
+            tuner = pickle.load(fp)
+        tuner.experiment_path = path
+        return tuner
 
 
 @PublicAPI
