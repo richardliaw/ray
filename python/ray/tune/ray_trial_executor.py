@@ -831,6 +831,8 @@ class RayTrialExecutor(TrialExecutor):
             AbortTrialExecution: This error is raised if the trial is
                 ineligible for restoration, given the Tune input arguments.
         """
+        from ray.train.api_v2.checkpoint import TrainCheckpoint
+
         checkpoint = trial.checkpoint
         if checkpoint.value is None:
             return
@@ -846,7 +848,8 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
+            if (trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint
+                    or isinstance(checkpoint.value, TrainCheckpoint)):
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:

@@ -8,7 +8,7 @@ from ray.train.api_v2.model import Model
 from ray.train.trainer import wrap_function
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.trainable import Trainable
-from ray.train.api_v2.checkpoint import Checkpoint
+from ray.train.api_v2.checkpoint import (Checkpoint, LocalStorageCheckpoint)
 from ray.train.api_v2.preprocessor import Preprocessor
 
 # num_workers, gpu, etc.
@@ -73,17 +73,22 @@ class FunctionTrainer(Trainer, abc.ABC):
     def as_trainable(self) -> Type["Trainable"]:
         self_run_config = copy.deepcopy(self.run_config) or {}
         self_scaling_config = copy.deepcopy(self.scaling_config) or {}
+        self_datasets = copy.copy(self.datasets)
         self_resume_from_checkpoint = copy.deepcopy(
             self.resume_from_checkpoint)
         self_kwargs = copy.deepcopy(self.kwargs)
 
         # Using a function trainable here as XGBoost-Ray's integrations
         # (e.g. callbacks) are optimized for this case
-        def internal_train_fn(config):
+        def internal_train_fn(config, checkpoint_dir):
             override_run_config = config.pop("run_config", None)
             override_scaling_config = config.pop("scaling_config", None)
 
-            datasets = config.pop("datasets", None)
+            datasets = self_datasets or {}
+            override_datasets = config.pop("datasets", None)
+            if override_datasets:
+                datasets.update(override_datasets)
+
             preprocessor = config.pop("preprocessor", None)
 
             if preprocessor:
@@ -118,11 +123,16 @@ class FunctionTrainer(Trainer, abc.ABC):
             # Update with remaining config ite s
             updated_kwargs.update(config)
 
+            if checkpoint_dir:
+                checkpoint = LocalStorageCheckpoint(path=checkpoint_dir)
+            else:
+                checkpoint = self_resume_from_checkpoint
+
             self.train_fn(
                 run_config=run_config,
                 scaling_config=scaling_config,
                 datasets=processed_datasets,
-                checkpoint=self_resume_from_checkpoint,
+                checkpoint=checkpoint,
                 **updated_kwargs)
 
         trainable = wrap_function(internal_train_fn)

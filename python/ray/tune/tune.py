@@ -83,10 +83,14 @@ class Tuner:
         self.param_space = param_space
         self.experiment_path = None
 
-    def _get_trainable(self):
+    def _get_trainable(self,
+                       datasets: Optional[Dict[str, ray.data.Dataset]] = None):
         if isinstance(self.trainable, Type) and issubclass(
                 self.trainable, Trainer):
-            obj = self.trainable(run_config=self.run_config, scaling_config={})
+            obj = self.trainable(
+                run_config=self.run_config,
+                scaling_config={},
+                datasets=datasets)
             trainable = obj.as_trainable()
         elif isinstance(self.trainable, ConvertibleToTrainable):
             trainable = self.trainable.as_trainable()
@@ -99,7 +103,7 @@ class Tuner:
         if datasets:
             param_space.update({"datasets": datasets})
 
-        trainable = self._get_trainable()
+        trainable = self._get_trainable(datasets=datasets)
 
         # For initial prototyping call tune.run() here
         analysis = run(

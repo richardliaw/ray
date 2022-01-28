@@ -47,6 +47,10 @@ class XGBoostTrainer(FunctionTrainer):
         ray_params.__dict__.update(**run_config)
         ray_params.__dict__.update(**scaling_config)
 
+        xgb_model = None
+        if checkpoint:
+            xgb_model = checkpoint.load_model().bst
+
         xgboost_ray.train(
             dtrain=dmatrix,
             params=params,
@@ -56,7 +60,7 @@ class XGBoostTrainer(FunctionTrainer):
                 TuneReportCheckpointCallback(
                     filename="model.xgb", frequency=1)
             ],
-            **kwargs)
+            xgb_model=xgb_model**kwargs)
 
     def resource_fn(self, scaling_config: ScalingConfig):
         return _get_tune_resources(**scaling_config)
@@ -139,9 +143,9 @@ def test_xgboost_tuner():
             "gpus_per_actor": 0
         },
         "preprocessor": tune.grid_search([prep_v1, prep_v2]),
-        "datasets": {
-            "train_dataset": tune.grid_search([dataset_v1, dataset_v2]),
-        },
+        # "datasets": {
+        #     "train_dataset": tune.grid_search([dataset_v1, dataset_v2]),
+        # },
         "params": {
             "objective": "binary:logistic",
             "tree_method": "approx",
@@ -156,13 +160,13 @@ def test_xgboost_tuner():
         XGBoostTrainer(
             run_config={"max_actor_restarts": 1},
             scaling_config={},
-            datasets={},
+            datasets=None,
             resume_from_checkpoint=None,
             label="target"),
         run_config={},
         param_space=param_space)
 
-    results = tuner.fit()
+    results = tuner.fit(datasets={"train_dataset": dataset_v1})
     print(results.results)
 
     best_result = results.results[0]
@@ -192,6 +196,8 @@ def test_xgboost_resume(path: str):
     print(predicted.to_pandas())
 
 
-# test_xgboost_trainer()
-# test_xgboost_tuner()
-test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")
+if __name__ == "__main__":
+    ray.init(address="auto")
+    # test_xgboost_trainer()
+    # test_xgboost_tuner()
+    test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")
