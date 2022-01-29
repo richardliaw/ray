@@ -60,7 +60,8 @@ class XGBoostTrainer(FunctionTrainer):
                 TuneReportCheckpointCallback(
                     filename="model.xgb", frequency=1)
             ],
-            xgb_model=xgb_model**kwargs)
+            xgb_model=xgb_model,
+            **kwargs)
 
     def resource_fn(self, scaling_config: ScalingConfig):
         return _get_tune_resources(**scaling_config)
@@ -197,7 +198,7 @@ def test_xgboost_resume(path: str):
 
 
 if __name__ == "__main__":
-    ray.init(address="auto")
-    # test_xgboost_trainer()
+    ray.init()# address="auto")
+    test_xgboost_trainer()
     # test_xgboost_tuner()
-    test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")
+    # test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")

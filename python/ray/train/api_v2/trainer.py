@@ -11,8 +11,13 @@ from ray.tune.trainable import Trainable
 from ray.train.api_v2.checkpoint import (Checkpoint, LocalStorageCheckpoint)
 from ray.train.api_v2.preprocessor import Preprocessor
 
+from dataclasses import dataclass
+
 # num_workers, gpu, etc.
-ScalingConfig = Dict[str, Any]
+@dataclass
+class ScalingConfig:
+    pass
+
 # checkpoint_dir, etc.
 RunConfig = Dict[str, Any]
 

@@ -91,9 +91,9 @@ class Tuner:
                 run_config=self.run_config,
                 scaling_config={},
                 datasets=datasets)
-            trainable = obj.as_trainable()
+            trainable = obj.as_trainable(datasets)
         elif isinstance(self.trainable, ConvertibleToTrainable):
-            trainable = self.trainable.as_trainable()
+            trainable = self.trainable.as_trainable(datasets)
         else:
             trainable = self.trainable
         return trainable
@@ -117,7 +117,10 @@ class Tuner:
 
         tuner_ckpt = os.path.join(self.experiment_path, "tuner.pkl")
         with open(tuner_ckpt, "wb") as fp:
+            trainable = self.trainable
+            self.trainable = None
             pickle.dump(self, fp)
+            self.trainable = trainable
 
         results = [
             Result(t.trial_id, t.last_result, t.checkpoint.value)
