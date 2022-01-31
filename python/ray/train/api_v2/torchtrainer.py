@@ -1,4 +1,3 @@
-
 from ray.train.api_v2.model import Model
 from ray.tune.tune import Tuner
 from xgboost_ray.tune import (TuneReportCheckpointCallback,
@@ -8,9 +7,9 @@ import ray.data
 from ray.train.api_v2.checkpoint import (Checkpoint,
                                          TrainObjectStoreCheckpoint)
 from ray.train.api_v2.preprocessor import (Scaler, Chain, Repartitioner)
-from ray.train.api_v2.trainer import (ScalingConfig, RunConfig,
-                                      Trainer)
+from ray.train.api_v2.trainer import (ScalingConfig, RunConfig, Trainer)
 from sklearn.datasets import load_breast_cancer
+
 
 @dataclass
 class TorchScalingConfig(ScalingConfig):
@@ -38,7 +37,8 @@ class TorchTrainer(Trainer):
                  scaling_config: Optional[TorchScalingConfig] = None,
                  run_config: Optional[RunConfig] = None,
                  resume_from_checkpoint: Optional[Checkpoint] = None):
-        super().__init__(self,
+        super().__init__(
+            self,
             scaling_config=scaling_config,
             run_config=run_config,
             datasets=None,  # TODO: this shouldn't be here.
@@ -53,6 +53,7 @@ class TorchTrainer(Trainer):
 
     def as_trainable(self, dataset) -> Type["Trainable"]:
         trainable = self._trainer.to_tune_trainable(self.train_func, dataset)
+
         def postprocess_checkpoint(config: Dict[str, Any],
                                    checkpoint: Checkpoint):
             checkpoint.preprocessor = config.get("preprocessor", None)
@@ -69,7 +70,7 @@ class TorchTrainer(Trainer):
         from ray.tune.tune import Tuner
         tuner = Tuner(
             self,
-            run_config=self.run_config, # I don't know what this does
+            run_config=self.run_config,  # I don't know what this does
             param_space={
                 "preprocessor": preprocessor,
                 **self.kwargs
@@ -77,7 +78,6 @@ class TorchTrainer(Trainer):
 
         result_grid = tuner.fit(datasets={"train_dataset": dataset})
         return result_grid.results[0]
-
 
     def model_fn(self, checkpoint: TrainObjectStoreCheckpoint,
                  **options) -> TorchModel:

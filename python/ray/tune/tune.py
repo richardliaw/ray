@@ -1,7 +1,7 @@
 import copy
-import pickle
+import ray.cloudpickle as pickle
 from typing import Any, Callable, Dict, Mapping, Optional, Sequence, Type, \
-    Union
+    Union, List
 
 import datetime
 import logging
@@ -39,7 +39,7 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.train.api_v2.trainer import ConvertibleToTrainable, Trainer
+from ray.train.api_v2.trainer import ConvertibleToTrainable
 from ray.train.api_v2.result import Result, ResultGrid
 
 # Must come last to avoid circular imports
@@ -75,35 +75,38 @@ def _report_progress(runner, reporter, done=False):
 
 
 class Tuner:
-    def __init__(self, trainable: Union[str, Callable, Type[Trainable], Type[
-            ConvertibleToTrainable], ConvertibleToTrainable],
-                 run_config: Dict[str, Any], param_space: Dict[str, Any]):
+    def __init__(self,
+                 trainable: Union[str, Callable, Type[Trainable], Type[
+                     ConvertibleToTrainable], ConvertibleToTrainable],
+                 run_config: Dict[str, Any],
+                 param_space: Dict[str, Any],
+                 name: Optional[str] = None,
+                 callbacks: Optional[List[Callback]] = None):
         self.trainable = trainable
         self.run_config = run_config
         self.param_space = param_space
         self.experiment_path = None
 
-    def _get_trainable(self,
-                       datasets: Optional[Dict[str, ray.data.Dataset]] = None):
-        if isinstance(self.trainable, Type) and issubclass(
-                self.trainable, Trainer):
-            obj = self.trainable(
-                run_config=self.run_config,
-                scaling_config={},
-                datasets=datasets)
-            trainable = obj.as_trainable(datasets)
-        elif isinstance(self.trainable, ConvertibleToTrainable):
-            trainable = self.trainable.as_trainable(datasets)
+        self.name = name
+        self.callbacks = callbacks
+
+    @staticmethod
+    def _convert_trainable(
+            trainable: Any,
+            datasets: Optional[Dict[str, ray.data.Dataset]] = None):
+        if isinstance(trainable, ConvertibleToTrainable):
+            trainable = trainable.as_trainable(datasets)
         else:
-            trainable = self.trainable
+            trainable = trainable
         return trainable
 
     def fit(self, datasets: Optional[Dict[str, ray.data.Dataset]] = None):
         param_space = copy.deepcopy(self.param_space)
-        if datasets:
-            param_space.update({"datasets": datasets})
 
-        trainable = self._get_trainable(datasets=datasets)
+        # if datasets:
+        #     param_space.update({"datasets": datasets})
+
+        trainable = self._convert_trainable(self.trainable, datasets=datasets)
 
         # For initial prototyping call tune.run() here
         analysis = run(
@@ -112,15 +115,18 @@ class Tuner:
                 "run_config": self.run_config,
                 **param_space
             },
+            name=self.name,
+            callbacks=self.callbacks,
         )
-        self.experiment_path = analysis.experiment_dir
+        self.experiment_path = copy.copy(analysis.experiment_dir)
 
         tuner_ckpt = os.path.join(self.experiment_path, "tuner.pkl")
         with open(tuner_ckpt, "wb") as fp:
-            trainable = self.trainable
-            self.trainable = None
             pickle.dump(self, fp)
-            self.trainable = trainable
+
+        trainable_ckpt = os.path.join(self.experiment_path, "trainable.pkl")
+        with open(trainable_ckpt, "wb") as fp:
+            pickle.dump(self.trainable, fp)
 
         results = [
             Result(t.trial_id, t.last_result, t.checkpoint.value)
@@ -129,10 +135,12 @@ class Tuner:
 
         return ResultGrid(results)
 
-    def resume_fit(self):
+    def resume_fit(self,
+                   datasets: Optional[Dict[str, ray.data.Dataset]] = None):
         assert self.experiment_path
 
-        trainable = self._get_trainable()
+        trainable = self._convert_trainable(self.trainable, datasets=datasets)
+        Experiment.register_if_needed(trainable)
 
         # E.g. /home/ray/ray_results/experiment_name
         experiment_dir = os.path.dirname(self.experiment_path + os.sep)
@@ -153,11 +161,25 @@ class Tuner:
 
     @classmethod
     def restore(cls, path: str) -> "Tuner":
+        trainable_ckpt = os.path.join(path, "trainable.pkl")
+        with open(trainable_ckpt, "rb") as fp:
+            trainable = pickle.load(fp)
+
         tuner_ckpt = os.path.join(path, "tuner.pkl")
         with open(tuner_ckpt, "rb") as fp:
             tuner = pickle.load(fp)
+
+        tuner.trainable = trainable
         tuner.experiment_path = path
         return tuner
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state.pop("trainable", None)
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
 
 @PublicAPI

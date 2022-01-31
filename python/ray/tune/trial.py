@@ -792,7 +792,7 @@ class Trial:
             validate_trainable(self.trainable_name)
 
         # Avoid creating logdir in client mode for returned trial results,
-        # since the dir might not be creatable locally. TODO(ekl) thsi is kind
+        # since the dir might not be creatable locally. TODO(ekl) this is kind
         # of a hack.
         if not ray.util.client.ray.is_connected():
             self.init_logdir()  # Create logdir if it does not exist

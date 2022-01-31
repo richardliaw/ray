@@ -1,12 +1,16 @@
 import os
 import shutil
-from typing import Optional, Dict, Any
+import signal
+import time
+from typing import Optional, Dict, Any, List
 
 import pandas as pd
 import xgboost
 import xgboost_ray
 from ray import tune
 from ray.train.api_v2.model import Model
+from ray.tune import Callback
+from ray.tune.trial import Trial
 from ray.tune.tune import Tuner
 from xgboost_ray.tune import (TuneReportCheckpointCallback,
                               _get_tune_resources)
@@ -111,7 +115,22 @@ def test_xgboost_trainer():
     print(predicted.to_pandas())
 
 
-def test_xgboost_tuner():
+class StopperCallback(Callback):
+    def __init__(self, fail_after_finished: int = 0):
+        assert fail_after_finished > 0
+        self.fail_after_finished = fail_after_finished
+
+    def on_step_end(self, iteration: int, trials: List["Trial"], **info):
+        if len([t for t in trials
+                if t.status == "TERMINATED"]) >= self.fail_after_finished:
+            print("STOPPING VIA SIGINT")
+            os.kill(os.getpid(), signal.SIGINT)
+            time.sleep(1)
+
+
+def test_xgboost_tuner(fail_after_finished: int = 0):
+    shutil.rmtree("/Users/kai/ray_results/tuner_resume", ignore_errors=True)
+
     data_raw = load_breast_cancer(as_frame=True)
     dataset_df = data_raw["data"]
     dataset_df["target"] = data_raw["target"]
@@ -157,15 +176,21 @@ def test_xgboost_tuner():
         }
     }
 
+    if fail_after_finished > 0:
+        callbacks = [StopperCallback(fail_after_finished=fail_after_finished)]
+    else:
+        callbacks = None
+
     tuner = Tuner(
         XGBoostTrainer(
             run_config={"max_actor_restarts": 1},
-            scaling_config={},
-            datasets=None,
+            scaling_config=None,
             resume_from_checkpoint=None,
             label="target"),
         run_config={},
-        param_space=param_space)
+        param_space=param_space,
+        name="tuner_resume",
+        callbacks=callbacks)
 
     results = tuner.fit(datasets={"train_dataset": dataset_v1})
     print(results.results)
@@ -181,9 +206,19 @@ def test_xgboost_tuner():
 
 
 def test_xgboost_resume(path: str):
+    # Dataset pickling/unpickling currentyl does not work
+    # thus we have to set this again
+    data_raw = load_breast_cancer(as_frame=True)
+    dataset_df = data_raw["data"]
+    dataset_df["target"] = data_raw["target"]
+    dataset = ray.data.from_pandas(dataset_df)
+
+    dataset_v1 = dataset.random_shuffle(seed=1234)
+    dataset_v1.get_internal_block_refs()
+
     tuner = Tuner.restore(path)
 
-    results = tuner.resume_fit()
+    results = tuner.resume_fit(datasets={"train_dataset": dataset_v1})
     print(results.results)
 
     best_result = results.results[0]
@@ -198,7 +233,7 @@ def test_xgboost_resume(path: str):
 
 
 if __name__ == "__main__":
-    ray.init()# address="auto")
-    test_xgboost_trainer()
-    # test_xgboost_tuner()
-    # test_xgboost_resume("/Users/kai/ray_results/internal_train_resume")
+    ray.init()  # address="auto")
+    # test_xgboost_trainer()
+    # test_xgboost_tuner(fail_after_finished=2)
+    test_xgboost_resume("/Users/kai/ray_results/tuner_resume")

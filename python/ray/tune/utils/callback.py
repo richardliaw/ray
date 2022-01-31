@@ -41,7 +41,7 @@ def create_default_callbacks(callbacks: Optional[List[Callback]],
     are synced across nodes.
 
     """
-    callbacks = callbacks or []
+    callbacks = callbacks.copy() if callbacks else []
     has_syncer_callback = False
     has_csv_logger = False
     has_json_logger = False

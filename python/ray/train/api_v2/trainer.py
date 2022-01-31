@@ -13,10 +13,12 @@ from ray.train.api_v2.preprocessor import Preprocessor
 
 from dataclasses import dataclass
 
+
 # num_workers, gpu, etc.
 @dataclass
 class ScalingConfig:
     pass
+
 
 # checkpoint_dir, etc.
 RunConfig = Dict[str, Any]
@@ -26,7 +28,8 @@ GenDataset = Union[Dataset, Callable[[], Dataset]]
 
 
 class ConvertibleToTrainable(abc.ABC):
-    def as_trainable(self) -> Type["Trainable"]:
+    def as_trainable(self, datasets: Optional[Dict[str, GenDataset]]
+                     ) -> Type["Trainable"]:
         raise NotImplementedError
 
 
@@ -34,12 +37,10 @@ class Trainer(ConvertibleToTrainable, abc.ABC):
     def __init__(self,
                  scaling_config: Optional[ScalingConfig] = None,
                  run_config: Optional[RunConfig] = None,
-                 datasets: Optional[dict] = None,
                  resume_from_checkpoint: Optional[Checkpoint] = None,
                  **kwargs):
         self.scaling_config = scaling_config
         self.run_config = run_config
-        self.datasets = datasets
         self.resume_from_checkpoint = resume_from_checkpoint
         self.kwargs = kwargs
 
@@ -75,13 +76,16 @@ class FunctionTrainer(Trainer, abc.ABC):
         result_grid = tuner.fit(datasets={"train_dataset": dataset})
         return result_grid.results[0]
 
-    def as_trainable(self) -> Type["Trainable"]:
+    def as_trainable(self, datasets: Optional[Dict[str, GenDataset]] = None
+                     ) -> Type["Trainable"]:
         self_run_config = copy.deepcopy(self.run_config) or {}
         self_scaling_config = copy.deepcopy(self.scaling_config) or {}
-        self_datasets = copy.copy(self.datasets)
         self_resume_from_checkpoint = copy.deepcopy(
             self.resume_from_checkpoint)
         self_kwargs = copy.deepcopy(self.kwargs)
+
+        # Copy to detach from current object
+        arg_datasets = copy.deepcopy(datasets)
 
         # Using a function trainable here as XGBoost-Ray's integrations
         # (e.g. callbacks) are optimized for this case
@@ -89,20 +93,20 @@ class FunctionTrainer(Trainer, abc.ABC):
             override_run_config = config.pop("run_config", None)
             override_scaling_config = config.pop("scaling_config", None)
 
-            datasets = self_datasets or {}
+            this_datasets = arg_datasets or {}
             override_datasets = config.pop("datasets", None)
             if override_datasets:
-                datasets.update(override_datasets)
+                this_datasets.update(override_datasets)
 
             preprocessor = config.pop("preprocessor", None)
 
             if preprocessor:
                 processed_datasets = {
                     name: preprocessor.fit_transform(ds)
-                    for name, ds in datasets.items()
+                    for name, ds in this_datasets.items()
                 }
             else:
-                processed_datasets = datasets
+                processed_datasets = this_datasets
 
             run_config = self_run_config or {}
             if override_run_config:
