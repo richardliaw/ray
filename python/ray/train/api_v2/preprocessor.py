@@ -1,11 +1,14 @@
 import abc
-from typing import List
+from typing import List, Union, Dict
 
 import numpy as np
 import pandas as pd
 
 import ray.data
 from ray.data.aggregate import Mean, Std
+
+
+DataBatchType = Union[pd.DataFrame, np.ndarray, Dict[str, np.ndarray]]
 
 
 class Preprocessor(abc.ABC):
@@ -19,6 +22,9 @@ class Preprocessor(abc.ABC):
         # Todo: optimize
         self.fit(dataset)
         return self.transform(dataset)
+
+    def transform_batch(self, df: DataBatchType) -> DataBatchType:
+        raise NotImplementedError
 
 
 class Scaler(Preprocessor):
@@ -35,17 +41,17 @@ class Scaler(Preprocessor):
         columns = self.columns
         stats = self.stats
 
-        def _scale(df: pd.DataFrame):
-            def column_standard_scaler(s: pd.Series):
-                s_mean = stats[f"mean({s.name})"]
-                s_std = stats[f"std({s.name})"]
-                return (s - s_mean) / s_std
+        return dataset.map_batches(self.transform_batch, batch_format="pandas")
 
-            df.loc[:, columns] = df.loc[:, columns].transform(
-                column_standard_scaler)
-            return df
+    def transform_batch(self, df: DataBatchType) -> DataBatchType:
+        def column_standard_scaler(s: pd.Series):
+            s_mean = self.stats[f"mean({s.name})"]
+            s_std = self.stats[f"std({s.name})"]
+            return (s - s_mean) / s_std
 
-        return dataset.map_batches(_scale, batch_format="pandas")
+        df.loc[:, self.columns] = df.loc[:, self.columns].transform(
+            column_standard_scaler)
+        return df
 
     def __repr__(self):
         return f"<Scaler columns={self.columns} stats={self.stats}>"
@@ -60,6 +66,9 @@ class Repartitioner(Preprocessor):
 
     def transform(self, dataset: ray.data.Dataset) -> ray.data.Dataset:
         return dataset.repartition(num_blocks=self.num_partitions)
+
+    def transform_batch(self, df: DataBatchType) -> DataBatchType:
+        return df ## Noop
 
     def __repr__(self):
         return f"<Repartitioner num_partitions={self.num_partitions}>"

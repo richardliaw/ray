@@ -64,7 +64,7 @@ class FunctionTrainer(Trainer, abc.ABC):
     def fit(self, dataset: ray.data.Dataset, preprocessor: Preprocessor):
         from ray.tune.tune import Tuner
 
-        trainable = self.as_trainable()
+        trainable = self.as_trainable(datasets={"train_dataset": dataset})
 
         tuner = Tuner(
             trainable,
@@ -86,6 +86,7 @@ class FunctionTrainer(Trainer, abc.ABC):
 
         # Copy to detach from current object
         arg_datasets = copy.deepcopy(datasets)
+        print(arg_datasets)
 
         # Using a function trainable here as XGBoost-Ray's integrations
         # (e.g. callbacks) are optimized for this case

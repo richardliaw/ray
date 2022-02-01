@@ -105,7 +105,7 @@ def test_xgboost_trainer():
         run_config={"max_actor_restarts": 1},
         label="target",
         params=params)
-    result = trainer.fit(dataset, preprocessor=preprocessor)
+    result = trainer.fit(dataset=dataset, preprocessor=preprocessor)
     print(result)
 
     this_checkpoint = result.checkpoint
@@ -113,6 +113,8 @@ def test_xgboost_trainer():
     this_model = this_checkpoint.load_model()
     predicted = this_model.predict(predict_ds)
     print(predicted.to_pandas())
+
+    this_checkpoint.to_local_storage("./tmp-checkpoint")
 
 
 class StopperCallback(Callback):
@@ -234,6 +236,6 @@ def test_xgboost_resume(path: str):
 
 if __name__ == "__main__":
     ray.init()  # address="auto")
-    # test_xgboost_trainer()
+    test_xgboost_trainer()
     # test_xgboost_tuner(fail_after_finished=2)
-    test_xgboost_resume("/Users/kai/ray_results/tuner_resume")
+    # test_xgboost_resume("/Users/kai/ray_results/tuner_resume")
