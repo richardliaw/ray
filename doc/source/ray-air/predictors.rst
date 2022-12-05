@@ -75,6 +75,11 @@ Additionally, you can compute metrics from the predictions. Do this by:
     :start-after: __compute_accuracy_start__
     :end-before: __compute_accuracy_end__
 
+How to use GPUs with Batch Prediction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+...
+
 Batch Inference Examples
 ------------------------
 Below, we provide examples of using common frameworks to do batch inference for different data types:
