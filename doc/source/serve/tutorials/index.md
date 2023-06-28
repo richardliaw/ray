@@ -18,4 +18,5 @@ java
 stable-diffusion
 text-classification
 object-detection
+gptj_serving
 ```
