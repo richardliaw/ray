@@ -2,11 +2,13 @@ import collections
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Iterator,
     List,
     Mapping,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -22,6 +24,7 @@ from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+    from ray.data.aggregate import AggregateFn
 
 
 T = TypeVar("T")
@@ -243,16 +246,75 @@ class TableBlockAccessor(BlockAccessor):
         return self._zip(acc)
 
     @staticmethod
-    def _resolve_aggregate_name_conflicts(aggregate_names: List[str]) -> List[str]:
-        count = collections.defaultdict(int)
-        resolved_agg_names = []
-        for name in aggregate_names:
-            # Check for conflicts with existing aggregation name.
-            if name in count:
-                name = f"{name}_{count+1}"
-            count[name] += 1
-            resolved_agg_names.append(name)
-        return resolved_agg_names
+    def _aggregate_combined_blocks(
+        iter: Iterator[T],
+        builder: TableBlockBuilder,
+        keys: List[str],
+        key_fn: Callable[[T], Tuple],
+        aggs: Tuple["AggregateFn"],
+        finalize: bool,
+    ) -> Block:
+
+        def _resolve_aggregate_name_conflicts(aggregate_names: List[str]) -> List[str]:
+            count = collections.defaultdict(int)
+            resolved_agg_names = []
+            for name in aggregate_names:
+                # Check for conflicts with existing aggregation name.
+                if name in count:
+                    name = f"{name}_{count+1}"
+                count[name] += 1
+                resolved_agg_names.append(name)
+            return resolved_agg_names
+
+        resolved_agg_names = _resolve_aggregate_name_conflicts(
+            [agg.name for agg in aggs])
+
+        next_row = None
+        named_aggs = dict(zip(resolved_agg_names, aggs))
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_keys = key_fn(next_row)
+                next_key_names = keys
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while key_fn(next_row) == next_keys:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                # Merge.
+                accumulators = dict(
+                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
+
+                for r in gen():
+                    for name, accumulated in accumulators.items():
+                        accumulators[name] = named_aggs[name].merge(accumulated, r[name])
+
+                # Build the row.
+                row = {}
+                if keys:
+                    for next_key, next_key_name in zip(next_keys, next_key_names):
+                        row[next_key_name] = next_key
+
+                for agg_name in resolved_agg_names:
+                    if finalize:
+                        row[agg_name] = named_aggs[agg_name].finalize(accumulators[agg_name])
+                    else:
+                        row[agg_name] = accumulators[agg_name]
+
+                builder.add(row)
+            except StopIteration:
+                break
+
+        return builder.build()
+
 
     @staticmethod
     def _empty_table() -> Any:

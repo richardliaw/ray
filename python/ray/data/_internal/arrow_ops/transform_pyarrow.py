@@ -321,7 +321,12 @@ def concat_and_sort(
     import pyarrow.compute as pac
 
     ret = concat(blocks)
-    indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
+    sort_args = sort_key.to_arrow_sort_args()
+    sort_args = [arg for arg in sort_args if arg[0] in ret.schema.names]
+    if not sort_args:
+        return pyarrow.Table.from_pydict({})
+
+    indices = pac.sort_indices(ret, sort_keys=sort_args)
     return take_table(ret, indices)
 
 

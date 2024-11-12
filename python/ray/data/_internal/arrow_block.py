@@ -615,82 +615,34 @@ class ArrowBlockAccessor(TableBlockAccessor):
             the ith given aggregation.
             If key is None then the k column is omitted.
         """
-
         stats = BlockExecStats.builder()
+        blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
+
+        concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
+        combined = concat_and_sort(blocks, sort_key)
+
+        builder = ArrowBlockBuilder()
+
+        if combined.num_rows == 0:
+            return combined, ArrowBlockAccessor(combined).get_metadata(exec_stats=stats.build())
+
+        iter = ArrowBlockAccessor(combined).iter_rows(public_row_format=False)
+
         keys = sort_key.get_columns()
 
         def key_fn(r):
-            if sort_key is not None:
+            if keys:
                 return tuple(r[k] for k in keys if k in r)
             else:
                 return (0,)
 
-        # Handle blocks of different types.
-        blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
-        combined = pyarrow.concat_tables(blocks, promote_options="default")
 
-        sort_args = sort_key.to_arrow_sort_args()
-
-        # if any of the sort_args are not in the combined schema, remove
-        # them from the sort_args
-        sort_args = [arg for arg in sort_args if arg[0] in combined.schema.names]
-
-        if not sort_args:
-            return combined, ArrowBlockAccessor(combined).get_metadata(exec_stats=stats.build())
-
-        combined = combined.sort_by(sort_args)
-        iter = ArrowBlockAccessor(combined).iter_rows(public_row_format=False)
-
-        next_row = None
-        builder = ArrowBlockBuilder()
-
-        resolved_agg_names = TableBlockAccessor._resolve_aggregate_name_conflicts(
-            [agg.name for agg in aggs])
-
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-                next_keys = key_fn(next_row)
-                next_key_names = keys
-
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while key_fn(next_row) == next_keys:
-                        yield next_row
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-
-                # Merge.
-                accumulators = dict(
-                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
-
-                for r in gen():
-                    for name, accumulated in accumulators.items():
-                        accumulators[name] = aggs[i].merge(accumulated, r[name])
-
-                # Build the row.
-                row = {}
-                if keys:
-                    for next_key, next_key_name in zip(next_keys, next_key_names):
-                        row[next_key_name] = next_key
-
-                for agg_name in resolved_agg_names:
-                    if finalize:
-                        row[agg_name] = agg.finalize(accumulators[agg_name])
-                    else:
-                        row[agg_name] = accumulators[agg_name]
-
-                builder.add(row)
-            except StopIteration:
-                break
-
-        ret = builder.build()
+        ret = TableBlockAccessor._aggregate_combined_blocks(
+            iter=iter, builder=builder, keys=keys, key_fn=key_fn, aggs=aggs, finalize=finalize
+        )
         return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+
+
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW

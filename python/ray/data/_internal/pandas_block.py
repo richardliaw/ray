@@ -544,9 +544,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         # Handle blocks of different types.
         blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
 
-        resolved_agg_names = TableBlockAccessor._resolve_aggregate_name_conflicts(
-            [agg.name for agg in aggs])
-
         iter = heapq.merge(
             *[
                 PandasBlockAccessor(block).iter_rows(public_row_format=False)
@@ -554,54 +551,13 @@ class PandasBlockAccessor(TableBlockAccessor):
             ],
             key=key_fn,
         )
-        next_row = None
+
         builder = PandasBlockBuilder()
-        while True:
-            try:
-                if next_row is None:
-                    next_row = next(iter)
-                next_keys = key_fn(next_row)
-                next_key_names = keys
 
-                def gen():
-                    nonlocal iter
-                    nonlocal next_row
-                    while key_fn(next_row) == next_keys:
-                        yield next_row
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-
-                # Merge.
-                accumulators = dict(
-                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
-
-                for r in gen():
-                    for name, accumulated in accumulators.items():
-                        accumulators[name] = aggs[i].merge(accumulated, r[name])
-
-                # Build the row.
-                row = {}
-                if keys:
-                    for next_key, next_key_name in zip(next_keys, next_key_names):
-                        row[next_key_name] = next_key
-
-                for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
-                ):
-                    if finalize:
-                        row[agg_name] = agg.finalize(accumulator)
-                    else:
-                        row[agg_name] = accumulator
-
-                builder.add(row)
-            except StopIteration:
-                break
-
-        ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+        ret = TableBlockAccessor._aggregate_combined_blocks(
+            iter=iter, builder=builder, keys=keys, key_fn=key_fn, aggs=aggs, finalize=finalize
+        )
+        return ret, PandasBlockBuilder(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
