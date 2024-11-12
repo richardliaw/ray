@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import pathlib
+import pyarrow as pa
 import random
 import sys
 import threading
@@ -707,21 +708,57 @@ def unify_block_metadata_schema(
     return None
 
 
-def find_partition_index(
-    table: Union["pyarrow.Table", "pandas.DataFrame"],
-    desired: List[Any],
+def find_partition_index_arrow(
+    table: "pyarrow.Table",
+    boundary: List[Any],
     sort_key: "SortKey",
 ) -> int:
     columns = sort_key.get_columns()
     descending = sort_key.get_descending()
 
     left, right = 0, len(table)
-    for i in range(len(desired)):
+    for col_name, boundary_val in zip(columns, boundary):
         if left == right:
             return right
-        col_name = columns[i]
+
+        col_array = table[col_name].slice(left, right - left)
+
+        prevleft = left
+
+        if pa.compute.sum(pa.compute.is_null(col_array, nan_is_null=True)).as_py() == len(col_array):
+            # all values are null
+            continue
+        elif descending is True:
+            left_idx = pa.compute.sum(pa.compute.greater(col_array, boundary_val))
+            right_idx = pa.compute.sum(pa.compute.greater_equal(col_array, boundary_val))
+
+            left = prevleft + left_idx.as_py()
+            right = prevleft + right_idx.as_py()
+        else:
+            left_idx = pa.compute.sum(pa.compute.less(col_array, boundary_val))
+            right_idx = pa.compute.sum(pa.compute.less_equal(col_array, boundary_val))
+            if left_idx.as_py() is None or right_idx.as_py() is None:
+                print(col_array, pa.compute.is_null(col_array, nan_is_null=True))
+                print(pa.compute.sum(pa.compute.is_null(col_array, nan_is_null=True)), len(col_array))
+            left = prevleft + left_idx.as_py()
+            right = prevleft + right_idx.as_py()
+
+    return right if descending is True else left
+
+
+def find_partition_index(
+    table: Union["pyarrow.Table", "pandas.DataFrame"],
+    boundary: List[Any],
+    sort_key: "SortKey",
+) -> int:
+    columns = sort_key.get_columns()
+    descending = sort_key.get_descending()
+
+    left, right = 0, len(table)
+    for col_name, boundary_val in zip(columns, boundary):
+        if left == right:
+            return right
         col_vals = table[col_name].to_numpy()[left:right]
-        desired_val = desired[i]
 
         prevleft = left
         if descending is True:
@@ -729,7 +766,7 @@ def find_partition_index(
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
-                    desired_val,
+                    boundary_val,
                     side="right",
                     sorter=np.arange(len(col_vals) - 1, -1, -1),
                 )
@@ -738,19 +775,24 @@ def find_partition_index(
                 len(col_vals)
                 - np.searchsorted(
                     col_vals,
-                    desired_val,
+                    boundary_val,
                     side="left",
                     sorter=np.arange(len(col_vals) - 1, -1, -1),
                 )
             )
         else:
-            left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
-            right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
+            left = prevleft + np.searchsorted(col_vals, boundary_val, side="left")
+            right = prevleft + np.searchsorted(col_vals, boundary_val, side="right")
     return right if descending is True else left
 
 
 def find_partitions(table, boundaries, sort_key):
     partitions = []
+
+    if isinstance(table, pa.Table):
+        find_partition_index_func = find_partition_index_arrow
+    else:
+        find_partition_index_func = find_partition_index
 
     # For each boundary value, count the number of items that are less
     # than it. Since the block is sorted, these counts partition the items
@@ -759,7 +801,7 @@ def find_partitions(table, boundaries, sort_key):
     # in descending order and we only need to count the number of items
     # *greater than* the boundary value instead.
     bounds = [
-        find_partition_index(table, boundary, sort_key) for boundary in boundaries
+        find_partition_index_func(table, boundary, sort_key) for boundary in boundaries
     ]
 
     last_idx = 0

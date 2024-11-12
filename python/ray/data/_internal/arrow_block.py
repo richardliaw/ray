@@ -627,14 +627,20 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Handle blocks of different types.
         blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
+        combined = pyarrow.concat_tables(blocks, promote_options="default")
 
-        iter = heapq.merge(
-            *[
-                ArrowBlockAccessor(block).iter_rows(public_row_format=False)
-                for block in blocks
-            ],
-            key=key_fn,
-        )
+        sort_args = sort_key.to_arrow_sort_args()
+
+        # if any of the sort_args are not in the combined schema, remove
+        # them from the sort_args
+        sort_args = [arg for arg in sort_args if arg[0] in combined.schema.names]
+
+        if not sort_args:
+            return combined, ArrowBlockAccessor(combined).get_metadata(exec_stats=stats.build())
+
+        combined = combined.sort_by(sort_args)
+        iter = ArrowBlockAccessor(combined).iter_rows(public_row_format=False)
+
         next_row = None
         builder = ArrowBlockBuilder()
 
