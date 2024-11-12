@@ -254,7 +254,6 @@ class TableBlockAccessor(BlockAccessor):
         aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Block:
-
         def _resolve_aggregate_name_conflicts(aggregate_names: List[str]) -> List[str]:
             count = collections.defaultdict(int)
             resolved_agg_names = []
@@ -267,7 +266,8 @@ class TableBlockAccessor(BlockAccessor):
             return resolved_agg_names
 
         resolved_agg_names = _resolve_aggregate_name_conflicts(
-            [agg.name for agg in aggs])
+            [agg.name for agg in aggs]
+        )
 
         next_row = None
         named_aggs = dict(zip(resolved_agg_names, aggs))
@@ -291,11 +291,14 @@ class TableBlockAccessor(BlockAccessor):
 
                 # Merge.
                 accumulators = dict(
-                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
+                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs))
+                )
 
                 for r in gen():
                     for name, accumulated in accumulators.items():
-                        accumulators[name] = named_aggs[name].merge(accumulated, r[name])
+                        accumulators[name] = named_aggs[name].merge(
+                            accumulated, r[name]
+                        )
 
                 # Build the row.
                 row = {}
@@ -305,7 +308,9 @@ class TableBlockAccessor(BlockAccessor):
 
                 for agg_name in resolved_agg_names:
                     if finalize:
-                        row[agg_name] = named_aggs[agg_name].finalize(accumulators[agg_name])
+                        row[agg_name] = named_aggs[agg_name].finalize(
+                            accumulators[agg_name]
+                        )
                     else:
                         row[agg_name] = accumulators[agg_name]
 
@@ -314,7 +319,6 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         return builder.build()
-
 
     @staticmethod
     def _empty_table() -> Any:

@@ -555,7 +555,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         builder = PandasBlockBuilder()
 
         ret = TableBlockAccessor._aggregate_combined_blocks(
-            iter=iter, builder=builder, keys=keys, key_fn=key_fn, aggs=aggs, finalize=finalize
+            iter=iter,
+            builder=builder,
+            keys=keys,
+            key_fn=key_fn,
+            aggs=aggs,
+            finalize=finalize,
         )
         return ret, PandasBlockBuilder(ret).get_metadata(exec_stats=stats.build())
 

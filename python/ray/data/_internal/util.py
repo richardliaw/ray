@@ -725,21 +725,22 @@ def find_partition_index_arrow(
 
         prevleft = left
 
-        if pa.compute.sum(pa.compute.is_null(col_array, nan_is_null=True)).as_py() == len(col_array):
+        if pa.compute.sum(
+            pa.compute.is_null(col_array, nan_is_null=True)
+        ).as_py() == len(col_array):
             # all values are null
             continue
         elif descending is True:
             left_idx = pa.compute.sum(pa.compute.greater(col_array, boundary_val))
-            right_idx = pa.compute.sum(pa.compute.greater_equal(col_array, boundary_val))
+            right_idx = pa.compute.sum(
+                pa.compute.greater_equal(col_array, boundary_val)
+            )
 
             left = prevleft + left_idx.as_py()
             right = prevleft + right_idx.as_py()
         else:
             left_idx = pa.compute.sum(pa.compute.less(col_array, boundary_val))
             right_idx = pa.compute.sum(pa.compute.less_equal(col_array, boundary_val))
-            if left_idx.as_py() is None or right_idx.as_py() is None:
-                print(col_array, pa.compute.is_null(col_array, nan_is_null=True))
-                print(pa.compute.sum(pa.compute.is_null(col_array, nan_is_null=True)), len(col_array))
             left = prevleft + left_idx.as_py()
             right = prevleft + right_idx.as_py()
 

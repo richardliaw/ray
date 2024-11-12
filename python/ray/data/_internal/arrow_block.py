@@ -624,7 +624,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         builder = ArrowBlockBuilder()
 
         if combined.num_rows == 0:
-            return combined, ArrowBlockAccessor(combined).get_metadata(exec_stats=stats.build())
+            return combined, ArrowBlockAccessor(combined).get_metadata(
+                exec_stats=stats.build()
+            )
 
         iter = ArrowBlockAccessor(combined).iter_rows(public_row_format=False)
 
@@ -636,13 +638,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
             else:
                 return (0,)
 
-
         ret = TableBlockAccessor._aggregate_combined_blocks(
-            iter=iter, builder=builder, keys=keys, key_fn=key_fn, aggs=aggs, finalize=finalize
+            iter=iter,
+            builder=builder,
+            keys=keys,
+            key_fn=key_fn,
+            aggs=aggs,
+            finalize=finalize,
         )
         return ret, ArrowBlockAccessor(ret).get_metadata(exec_stats=stats.build())
-
-
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
