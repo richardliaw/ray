@@ -544,6 +544,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         # Handle blocks of different types.
         blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
 
+        resolved_agg_names = TableBlockAccessor._resolve_aggregate_name_conflicts(
+            [agg.name for agg in aggs])
+
         iter = heapq.merge(
             *[
                 PandasBlockAccessor(block).iter_rows(public_row_format=False)
@@ -558,9 +561,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_keys = key_fn(next_row)
-                next_key_names = (
-                    next_row._row.columns[: len(keys)] if keys else None
-                )
+                next_key_names = keys
 
                 def gen():
                     nonlocal iter
@@ -574,29 +575,13 @@ class PandasBlockAccessor(TableBlockAccessor):
                             break
 
                 # Merge.
-                first = True
-                accumulators = [None] * len(aggs)
-                resolved_agg_names = [None] * len(aggs)
+                accumulators = dict(
+                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
+
                 for r in gen():
-                    if first:
-                        count = collections.defaultdict(int)
-                        for i in range(len(aggs)):
-                            name = aggs[i].name
-                            # Check for conflicts with existing aggregation
-                            # name.
-                            if count[name] > 0:
-                                name = PandasBlockAccessor._munge_conflict(
-                                    name, count[name]
-                                )
-                            count[name] += 1
-                            resolved_agg_names[i] = name
-                            accumulators[i] = r[name]
-                        first = False
-                    else:
-                        for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
-                            )
+                    for name, accumulated in accumulators.items():
+                        accumulators[name] = aggs[i].merge(accumulated, r[name])
+
                 # Build the row.
                 row = {}
                 if keys:

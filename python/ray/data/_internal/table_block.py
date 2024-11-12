@@ -243,6 +243,18 @@ class TableBlockAccessor(BlockAccessor):
         return self._zip(acc)
 
     @staticmethod
+    def _resolve_aggregate_name_conflicts(aggregate_names: List[str]) -> List[str]:
+        count = collections.defaultdict(int)
+        resolved_agg_names = []
+        for name in aggregate_names:
+            # Check for conflicts with existing aggregation name.
+            if name in count:
+                name = f"{name}_{count+1}"
+            count[name] += 1
+            resolved_agg_names.append(name)
+        return resolved_agg_names
+
+    @staticmethod
     def _empty_table() -> Any:
         raise NotImplementedError
 

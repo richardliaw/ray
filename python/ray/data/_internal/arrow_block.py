@@ -575,10 +575,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return builder.build()
 
     @staticmethod
-    def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
-
-    @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
@@ -641,6 +637,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
         next_row = None
         builder = ArrowBlockBuilder()
+
+        resolved_agg_names = TableBlockAccessor._resolve_aggregate_name_conflicts(
+            [agg.name for agg in aggs])
+
         while True:
             try:
                 if next_row is None:
@@ -660,42 +660,24 @@ class ArrowBlockAccessor(TableBlockAccessor):
                             break
 
                 # Merge.
-                first = True
-                accumulators = [None] * len(aggs)
-                resolved_agg_names = [None] * len(aggs)
+                accumulators = dict(
+                    zip(resolved_agg_names, (agg.init(next_keys) for agg in aggs)))
+
                 for r in gen():
-                    if first:
-                        count = collections.defaultdict(int)
-                        for i in range(len(aggs)):
-                            name = aggs[i].name
-                            # Check for conflicts with existing aggregation
-                            # name.
-                            if count[name] > 0:
-                                name = ArrowBlockAccessor._munge_conflict(
-                                    name, count[name]
-                                )
-                            count[name] += 1
-                            resolved_agg_names[i] = name
-                            accumulators[i] = r[name]
-                        first = False
-                    else:
-                        for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
-                            )
+                    for name, accumulated in accumulators.items():
+                        accumulators[name] = aggs[i].merge(accumulated, r[name])
+
                 # Build the row.
                 row = {}
                 if keys:
                     for next_key, next_key_name in zip(next_keys, next_key_names):
                         row[next_key_name] = next_key
 
-                for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
-                ):
+                for agg_name in resolved_agg_names:
                     if finalize:
-                        row[agg_name] = agg.finalize(accumulator)
+                        row[agg_name] = agg.finalize(accumulators[agg_name])
                     else:
-                        row[agg_name] = accumulator
+                        row[agg_name] = accumulators[agg_name]
 
                 builder.add(row)
             except StopIteration:
