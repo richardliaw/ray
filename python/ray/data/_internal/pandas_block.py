@@ -8,6 +8,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -422,7 +423,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: A SortKey object which holds column names/keys.
+            sort_key: A SortKey object which holds column names/keys.
             If this is ``None``, place all rows in a single group.
 
             aggs: The aggregations to do.
@@ -434,12 +435,13 @@ class PandasBlockAccessor(TableBlockAccessor):
             If key is None then the k column is omitted.
         """
         keys: List[str] = sort_key.get_columns()
+        pd = lazy_import_pandas()
 
-        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
+        def iter_groups() -> Iterator[Tuple[Sequence[KeyType], Block]]:
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self.to_block()
+                yield tuple(), self.to_block()
                 return
 
             start = end = 0
@@ -449,15 +451,17 @@ class PandasBlockAccessor(TableBlockAccessor):
                 try:
                     if next_row is None:
                         next_row = next(iter)
-                    next_key = next_row[keys]
-                    while np.all(next_row[keys] == next_key):
+                    next_keys = next_row[keys]
+                    while np.all(next_row[keys] == next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
                         except StopIteration:
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    if isinstance(next_keys, pd.Series):
+                        next_keys = next_keys.values
+                    yield next_keys, self.slice(start, end, copy=False)
                     start = end
                 except StopIteration:
                     break
@@ -465,7 +469,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         builder = PandasBlockBuilder()
         for group_keys, group_view in iter_groups():
             # Aggregate.
-            accumulators = [agg.init(group_keys) for agg in aggs]
+            init_vals = group_keys
+            if len(group_keys) == 1:
+                init_vals = group_keys[0]
+            accumulators = [agg.init(init_vals) for agg in aggs]
             for i in range(len(aggs)):
                 accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
 
@@ -519,7 +526,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
-            key: The column name of key or None for global aggregation.
+            sort_key: The column name of key or None for global aggregation.
             aggs: The aggregations to do.
             finalize: Whether to finalize the aggregation. This is used as an
                 optimization for cases where we repeatedly combine partially
@@ -536,8 +543,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         keys = sort_key.get_columns()
 
         def key_fn(r):
-            if sort_key is not None:
-                return tuple(r[k] for k in keys if k in r)
+            if keys:
+                return tuple(r[keys])
             else:
                 return (0,)
 
